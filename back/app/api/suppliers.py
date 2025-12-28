@@ -95,7 +95,7 @@ async def patch_supplier(supplier_id: UUID, supplier_data: SupplierUpdate, db: A
 
 @router.get("/{supplier_id}/imports")
 async def get_supplier_imports(supplier_id: UUID, db: AsyncSession = Depends(get_db)):
-    """Получить историю импортов прайс-листов"""
+    """Получить историю импортов"""
     from app.models.product_import import ProductImport
     
     result = await db.execute(select(Supplier).where(Supplier.id == supplier_id))
@@ -116,16 +116,15 @@ async def get_supplier_imports(supplier_id: UUID, db: AsyncSession = Depends(get
                 "id": str(imp.id),
                 "file_name": imp.file_name,
                 "file_url": imp.file_url,
-                "status": imp.status or "pending",
-                "total_products": imp.total_rows or 0,
-                "parsed_products": imp.processed_rows or 0,
+                "status": imp.status,
+                "total_products": imp.total_products or 0,
+                "parsed_products": imp.parsed_products or 0,
                 "created_at": imp.created_at.isoformat() if imp.created_at else None,
                 "error_message": imp.error_message
             }
             for imp in imports
         ]
     }
-
 
 @router.post("/{supplier_id}/upload-pricelist-new")
 async def upload_pricelist_new(supplier_id: UUID, file: UploadFile = File(...), db: AsyncSession = Depends(get_db)):
