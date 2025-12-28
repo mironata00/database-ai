@@ -197,7 +197,7 @@ class ColumnDetector:
                 if col in detected.values():
                     continue
                 
-                if self._check_content_match(sample[col], column_type):
+                if str(col) in df.columns and self._check_content_match(sample[str(col)], column_type):
                     detected[column_type] = col
                     logger.info(
                         f"Detected '{column_type}' as '{col}' by content analysis"
@@ -233,7 +233,8 @@ class ColumnDetector:
             avg_length = series.astype(str).str.len().mean()
             return avg_length > 10
         
-        elif column_type == "price":
+        # PRICE ОТКЛЮЧЁН - не используем
+        elif False and column_type == "price":
             # Цены - числа (возможно с валютой)
             try:
                 # Попытка преобразовать в float

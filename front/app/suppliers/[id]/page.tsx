@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
-import { ArrowLeft, Mail, Phone, Globe, MapPin, Star, Upload, FileText, X, Plus } from 'lucide-react'
+import { ArrowLeft, Mail, Phone, Globe, MapPin, Star, Upload, Download, X, Plus, Trash2 } from 'lucide-react'
 
 export default function SupplierDetailPage() {
   const router = useRouter()
@@ -13,6 +13,7 @@ export default function SupplierDetailPage() {
   const [newRating, setNewRating] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
   const [tags, setTags] = useState<string[]>([])
   const [newTag, setNewTag] = useState('')
 
@@ -23,7 +24,7 @@ export default function SupplierDetailPage() {
   useEffect(() => {
     fetchSupplier()
     fetchImports()
-    const interval = setInterval(fetchImports, 5000)
+    const interval = setInterval(fetchImports, 3000)
     return () => clearInterval(interval)
   }, [])
 
@@ -58,6 +59,85 @@ export default function SupplierDetailPage() {
       }
     } catch (error) {
       console.error('Error:', error)
+    }
+  }
+
+  const handleFileUpload = async () => {
+    if (!file) return
+    setUploading(true)
+    setUploadProgress(0)
+
+    try {
+      const token = localStorage.getItem('access_token')
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const xhr = new XMLHttpRequest()
+
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          const percent = Math.round((e.loaded / e.total) * 100)
+          setUploadProgress(percent)
+        }
+      })
+
+      xhr.addEventListener('load', () => {
+        if (xhr.status === 200) {
+          setFile(null)
+          setUploadProgress(0)
+          fetchImports()
+        }
+        setUploading(false)
+      })
+
+      xhr.addEventListener('error', () => {
+        setUploading(false)
+        setUploadProgress(0)
+        alert('Ошибка загрузки')
+      })
+
+      xhr.open('POST', `${API_URL}/api/suppliers/${params.id}/upload-pricelist-new`)
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+      xhr.send(formData)
+    } catch (error) {
+      setUploading(false)
+      setUploadProgress(0)
+    }
+  }
+
+  const deleteImport = async (importId: string) => {
+    if (!confirm('Удалить этот прайс-лист?')) return
+
+    try {
+      const token = localStorage.getItem('access_token')
+      const response = await fetch(`${API_URL}/api/suppliers/${params.id}/imports/${importId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (response.ok) {
+        fetchImports()
+      }
+    } catch (error) {
+      alert('Ошибка удаления')
+    }
+  }
+
+  const downloadFile = async (importId: string, fileName: string) => {
+    const token = localStorage.getItem('access_token')
+    const url = `${API_URL}/api/suppliers/${params.id}/download/${importId}`
+    
+    const response = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    
+    if (response.ok) {
+      const blob = await response.blob()
+      const downloadUrl = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = downloadUrl
+      a.download = fileName
+      a.click()
+      window.URL.revokeObjectURL(downloadUrl)
     }
   }
 
@@ -123,38 +203,8 @@ export default function SupplierDetailPage() {
     saveTags(newTags)
   }
 
-  const handleFileUpload = async () => {
-    if (!file) return
-    setUploading(true)
-    try {
-      const token = localStorage.getItem('access_token')
-      const formData = new FormData()
-      formData.append('file', file)
-
-      const response = await fetch(`${API_URL}/api/suppliers/${params.id}/upload-pricelist-new`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
-        body: formData
-      })
-
-      if (response.ok) {
-        setFile(null)
-        fetchImports()
-      }
-    } catch (error) {
-      console.error('Error:', error)
-    } finally {
-      setUploading(false)
-    }
-  }
-
-  if (loading) {
-    return <div className="min-h-screen flex items-center justify-center"><div>Загрузка...</div></div>
-  }
-
-  if (!supplier) {
-    return <div className="min-h-screen flex items-center justify-center"><div>Не найден</div></div>
-  }
+  if (loading) return <div className="min-h-screen flex items-center justify-center"><div>Загрузка...</div></div>
+  if (!supplier) return <div className="min-h-screen flex items-center justify-center"><div>Не найден</div></div>
 
   const InfoRow = ({ label, value }: { label: string; value: any }) => {
     if (!value) return null
@@ -166,12 +216,10 @@ export default function SupplierDetailPage() {
     )
   }
 
-  const latestImport = imports[0]
-
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="bg-white border-b">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center space-x-4">
             <button onClick={() => router.push('/')} className="p-2 hover:bg-gray-100 rounded-lg">
               <ArrowLeft className="w-5 h-5" />
@@ -202,6 +250,46 @@ export default function SupplierDetailPage() {
               </div>
             </div>
 
+            {(supplier.contact_person || supplier.contact_phone || supplier.contact_email) && (
+              <div className="bg-white rounded-lg border p-6">
+                <h2 className="text-lg font-semibold mb-4">Контактное лицо</h2>
+                <div className="space-y-2">
+                  <InfoRow label="ФИО" value={supplier.contact_person} />
+                  <InfoRow label="Должность" value={supplier.contact_position} />
+                  {supplier.contact_phone && <div className="flex items-center space-x-2 py-2"><Phone className="w-4 h-4 text-gray-400" /><span>{supplier.contact_phone}</span></div>}
+                  {supplier.contact_email && <div className="flex items-center space-x-2 py-2"><Mail className="w-4 h-4 text-gray-400" /><a href={`mailto:${supplier.contact_email}`} className="text-blue-600">{supplier.contact_email}</a></div>}
+                </div>
+              </div>
+            )}
+
+            {(supplier.legal_address || supplier.actual_address) && (
+              <div className="bg-white rounded-lg border p-6">
+                <h2 className="text-lg font-semibold mb-4">Адреса</h2>
+                <div className="space-y-3">
+                  {supplier.legal_address && <div><div className="text-sm text-gray-600 mb-1">Юридический</div><div className="flex items-start space-x-2"><MapPin className="w-4 h-4 text-gray-400 mt-1" /><span>{supplier.legal_address}</span></div></div>}
+                  {supplier.actual_address && <div><div className="text-sm text-gray-600 mb-1">Фактический</div><div className="flex items-start space-x-2"><MapPin className="w-4 h-4 text-gray-400 mt-1" /><span>{supplier.actual_address}</span></div></div>}
+                </div>
+              </div>
+            )}
+
+            <div className="bg-white rounded-lg border p-6">
+              <h2 className="text-lg font-semibold mb-4">Условия работы</h2>
+              <div className="space-y-1">
+                <InfoRow label="Оплата" value={supplier.payment_terms} />
+                <InfoRow label="Мин. сумма" value={supplier.min_order_sum ? `${supplier.min_order_sum} ₽` : null} />
+                {supplier.delivery_regions && supplier.delivery_regions.length > 0 && (
+                  <div className="py-2">
+                    <div className="text-gray-600 mb-2">Регионы</div>
+                    <div className="flex flex-wrap gap-2">
+                      {supplier.delivery_regions.map((r: string, i: number) => (
+                        <span key={i} className="px-2 py-1 bg-gray-100 rounded text-sm">{r}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
             {supplier.notes && (
               <div className="bg-white rounded-lg border p-6">
                 <h2 className="text-lg font-semibold mb-4">Примечания</h2>
@@ -226,7 +314,7 @@ export default function SupplierDetailPage() {
                   onKeyDown={(e) => e.key === 'Enter' && handleRatingUpdate()}
                   className="flex-1 px-3 py-2 border rounded-lg"
                 />
-                <button onClick={handleRatingUpdate} className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">
+                <button onClick={handleRatingUpdate} className="px-4 py-2 bg-blue-500 text-white rounded-lg">
                   OK
                 </button>
               </div>
@@ -240,10 +328,10 @@ export default function SupplierDetailPage() {
                   value={newTag}
                   onChange={(e) => setNewTag(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && addTag()}
-                  placeholder="Добавить тег..."
+                  placeholder="Добавить..."
                   className="flex-1 px-3 py-2 border rounded-lg text-sm"
                 />
-                <button onClick={addTag} className="px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">
+                <button onClick={addTag} className="px-3 py-2 bg-blue-500 text-white rounded-lg">
                   <Plus className="w-4 h-4" />
                 </button>
               </div>
@@ -251,7 +339,7 @@ export default function SupplierDetailPage() {
                 {tags.map((tag, i) => (
                   <span key={i} className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm flex items-center space-x-1 group">
                     <span>{tag}</span>
-                    <button onClick={() => removeTag(tag)} className="hover:text-red-600 opacity-0 group-hover:opacity-100 transition">
+                    <button onClick={() => removeTag(tag)} className="hover:text-red-600 opacity-0 group-hover:opacity-100">
                       <X className="w-3 h-3" />
                     </button>
                   </span>
@@ -260,55 +348,74 @@ export default function SupplierDetailPage() {
             </div>
 
             <div className="bg-white rounded-lg border p-6">
-              <h2 className="text-lg font-semibold mb-4">Прайс-лист</h2>
+              <h2 className="text-lg font-semibold mb-4">Прайс-листы ({imports.length})</h2>
               
-              {latestImport && (
-                <div className="mb-4 p-3 bg-gray-50 rounded">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium truncate">{latestImport.file_name}</span>
-                    {latestImport.status === 'processing' && <span className="text-xs text-yellow-600">⏳</span>}
-                    {latestImport.status === 'completed' && <span className="text-xs text-green-600">✓</span>}
-                  </div>
-                  
-                  {latestImport.status === 'processing' && latestImport.total_products > 0 && (
-                    <div>
-                      <div className="w-full bg-gray-200 rounded-full h-2 mb-1">
-                        <div
-                          className="bg-blue-500 h-2 rounded-full transition-all"
-                          style={{ width: `${Math.min(100, (latestImport.parsed_products / latestImport.total_products) * 100)}%` }}
-                        />
+              <div className="mb-4">
+                <input
+                  type="file"
+                  id="file"
+                  onChange={(e) => setFile(e.target.files?.[0] || null)}
+                  accept=".xlsx,.xls,.csv"
+                  className="hidden"
+                />
+                <label htmlFor="file" className="cursor-pointer block border-2 border-dashed rounded p-4 text-center hover:bg-gray-50">
+                  <Upload className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+                  <div className="text-sm text-gray-600">{file ? file.name : 'Загрузить'}</div>
+                </label>
+                {file && (
+                  <div className="mt-3">
+                    {uploading && (
+                      <div className="mb-2">
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div className="bg-blue-500 h-2 rounded-full transition-all" style={{width: `${uploadProgress}%`}} />
+                        </div>
+                        <div className="text-xs text-center mt-1 text-gray-600">{uploadProgress}%</div>
                       </div>
-                      <div className="text-xs text-gray-600">
-                        {latestImport.parsed_products} / {latestImport.total_products} ({Math.round((latestImport.parsed_products / latestImport.total_products) * 100)}%)
+                    )}
+                    <button onClick={handleFileUpload} disabled={uploading} className="w-full px-4 py-2 bg-blue-500 text-white rounded-lg disabled:opacity-50">
+                      {uploading ? 'Загрузка...' : 'Загрузить'}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                {imports.map((imp) => (
+                  <div key={imp.id} className="p-3 bg-gray-50 rounded border">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex-1 truncate">
+                        <div className="text-sm font-medium truncate">{imp.file_name}</div>
+                        <div className="text-xs text-gray-500">{new Date(imp.created_at).toLocaleString('ru')}</div>
+                      </div>
+                      <div>
+                        {imp.status === 'processing' && <span className="text-xs text-yellow-600">⏳</span>}
+                        {imp.status === 'completed' && <span className="text-xs text-green-600">✓</span>}
+                        {imp.status === 'pending' && <span className="text-xs text-gray-600">⏸</span>}
                       </div>
                     </div>
-                  )}
-                  
-                  {latestImport.file_url && (
-                    <a href={latestImport.file_url} download className="text-xs text-blue-600 hover:underline flex items-center space-x-1 mt-2">
-                      <FileText className="w-3 h-3" />
-                      <span>Скачать файл</span>
-                    </a>
-                  )}
-                </div>
-              )}
-              
-              <input
-                type="file"
-                id="file"
-                onChange={(e) => setFile(e.target.files?.[0] || null)}
-                accept=".xlsx,.xls,.csv"
-                className="hidden"
-              />
-              <label htmlFor="file" className="cursor-pointer block border-2 border-dashed rounded p-4 text-center hover:bg-gray-50">
-                <Upload className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-                <div className="text-sm text-gray-600">{file ? file.name : 'Загрузить новый'}</div>
-              </label>
-              {file && (
-                <button onClick={handleFileUpload} disabled={uploading} className="mt-3 w-full px-4 py-2 bg-blue-500 text-white rounded-lg disabled:opacity-50">
-                  {uploading ? 'Загрузка...' : 'Загрузить'}
-                </button>
-              )}
+                    
+                    {imp.status === 'processing' && imp.total_products > 0 && (
+                      <div className="mb-2">
+                        <div className="w-full bg-gray-200 rounded-full h-1 mb-1">
+                          <div className="bg-green-500 h-1 rounded-full" style={{width: `${(imp.parsed_products / imp.total_products) * 100}%`}} />
+                        </div>
+                        <div className="text-xs text-gray-600">{imp.parsed_products} / {imp.total_products}</div>
+                      </div>
+                    )}
+                    
+                    <div className="flex items-center space-x-3">
+                      <button onClick={() => downloadFile(imp.id, imp.file_name)} className="text-xs text-blue-600 hover:underline flex items-center space-x-1">
+                        <Download className="w-3 h-3" />
+                        <span>Скачать</span>
+                      </button>
+                      <button onClick={() => deleteImport(imp.id)} className="text-xs text-red-600 hover:underline flex items-center space-x-1">
+                        <Trash2 className="w-3 h-3" />
+                        <span>Удалить</span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>

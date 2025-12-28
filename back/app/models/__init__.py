@@ -11,6 +11,7 @@ from app.models.email import (
     CampaignStatus,
 )
 from app.models.product_import import ProductImport, ImportStatus
+from app.models.product import Product  # ДОБАВЛЕНО
 from app.models.audit_log import AuditLog, AuditAction
 
 __all__ = [
@@ -29,6 +30,7 @@ __all__ = [
     "CampaignStatus",
     "ProductImport",
     "ImportStatus",
+    "Product",  # ДОБАВЛЕНО
     "AuditLog",
     "AuditAction",
 ]

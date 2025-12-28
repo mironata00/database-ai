@@ -21,14 +21,14 @@ async def list_suppliers(
     query = select(Supplier)
     if status:
         query = query.where(Supplier.status == status)
-
+    
     total_query = select(func.count()).select_from(query.subquery())
     total = await db.scalar(total_query)
-
+    
     query = query.offset(skip).limit(limit)
     result = await db.execute(query)
     suppliers = result.scalars().all()
-
+    
     return {
         "total": total or 0,
         "suppliers": [SupplierResponse.from_orm(s) for s in suppliers],
@@ -58,29 +58,58 @@ async def update_supplier(supplier_id: UUID, supplier_data: SupplierUpdate, db: 
     supplier = result.scalar_one_or_none()
     if not supplier:
         raise HTTPException(status_code=404, detail="Supplier not found")
-
+    
     for key, value in supplier_data.dict(exclude_unset=True).items():
         setattr(supplier, key, value)
-
+    
     await db.commit()
     await db.refresh(supplier)
     return SupplierResponse.from_orm(supplier)
 
-@router.get("/{supplier_id}/imports")
-async def get_supplier_imports(supplier_id: UUID, db: AsyncSession = Depends(get_db)):
-    """Получить историю импортов"""
+@router.post("/{supplier_id}/upload-pricelist")
+async def upload_pricelist(supplier_id: UUID, file: UploadFile = File(...), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Supplier).where(Supplier.id == supplier_id))
     supplier = result.scalar_one_or_none()
     if not supplier:
         raise HTTPException(status_code=404, detail="Supplier not found")
+    
+    task = parse_pricelist_task.delay(str(supplier_id), file.filename, await file.read())
+    return {"task_id": task.id, "status": "processing"}
 
+
+@router.patch("/{supplier_id}", response_model=SupplierResponse)
+async def patch_supplier(supplier_id: UUID, supplier_data: SupplierUpdate, db: AsyncSession = Depends(get_db)):
+    """Частичное обновление поставщика"""
+    result = await db.execute(select(Supplier).where(Supplier.id == supplier_id))
+    supplier = result.scalar_one_or_none()
+    if not supplier:
+        raise HTTPException(status_code=404, detail="Supplier not found")
+    
+    for key, value in supplier_data.dict(exclude_unset=True).items():
+        setattr(supplier, key, value)
+    
+    await db.commit()
+    await db.refresh(supplier)
+    return SupplierResponse.from_orm(supplier)
+
+
+@router.get("/{supplier_id}/imports")
+async def get_supplier_imports(supplier_id: UUID, db: AsyncSession = Depends(get_db)):
+    """Получить историю импортов"""
+    from app.models.product_import import ProductImport
+    
+    result = await db.execute(select(Supplier).where(Supplier.id == supplier_id))
+    supplier = result.scalar_one_or_none()
+    if not supplier:
+        raise HTTPException(status_code=404, detail="Supplier not found")
+    
     result = await db.execute(
         select(ProductImport)
         .where(ProductImport.supplier_id == supplier_id)
         .order_by(ProductImport.created_at.desc())
     )
     imports = result.scalars().all()
-
+    
     return {
         "imports": [
             {
@@ -100,25 +129,29 @@ async def get_supplier_imports(supplier_id: UUID, db: AsyncSession = Depends(get
 @router.post("/{supplier_id}/upload-pricelist-new")
 async def upload_pricelist_new(supplier_id: UUID, file: UploadFile = File(...), db: AsyncSession = Depends(get_db)):
     """Загрузить прайс-лист (новая версия)"""
+    from app.models.product_import import ProductImport
     import os
     from datetime import datetime
-
+    
     result = await db.execute(select(Supplier).where(Supplier.id == supplier_id))
     supplier = result.scalar_one_or_none()
     if not supplier:
         raise HTTPException(status_code=404, detail="Supplier not found")
-
+    
+    # Создать директорию по ИНН
     upload_dir = f"/app/uploads/{supplier.inn}"
     os.makedirs(upload_dir, exist_ok=True)
-
+    
+    # Сохранить файл
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"{timestamp}_{file.filename}"
     filepath = os.path.join(upload_dir, filename)
-
+    
     content = await file.read()
     with open(filepath, "wb") as f:
         f.write(content)
-
+    
+    # Создать запись в БД
     import_record = ProductImport(
         supplier_id=supplier_id,
         file_name=file.filename,
@@ -128,28 +161,21 @@ async def upload_pricelist_new(supplier_id: UUID, file: UploadFile = File(...), 
         total_products=0,
         parsed_products=0
     )
-
+    
     db.add(import_record)
     await db.commit()
     await db.refresh(import_record)
+    
+    return {"import_id": str(import_record.id), "status": "uploaded", "file_url": filepath}
 
-    task = parse_pricelist_task.delay(str(supplier_id), file.filename, content)
-    import_record.task_id = task.id
-    await db.commit()
 
-    return {
-        "import_id": str(import_record.id),
-        "task_id": task.id,
-        "status": "pending",
-        "file_url": filepath
-    }
 
-@router.get("/{supplier_id}/imports/{import_id}/download")
+@router.get("/{supplier_id}/download/{import_id}")
 async def download_pricelist(supplier_id: UUID, import_id: UUID, db: AsyncSession = Depends(get_db)):
     """Скачать файл прайс-листа"""
     from fastapi.responses import FileResponse
     import os
-
+    
     result = await db.execute(
         select(ProductImport).where(
             ProductImport.id == import_id,
@@ -159,21 +185,22 @@ async def download_pricelist(supplier_id: UUID, import_id: UUID, db: AsyncSessio
     imp = result.scalar_one_or_none()
     if not imp or not imp.file_url:
         raise HTTPException(status_code=404, detail="File not found")
-
+    
     if not os.path.exists(imp.file_url):
         raise HTTPException(status_code=404, detail="File not found on disk")
-
+    
     return FileResponse(
         imp.file_url,
         media_type='application/octet-stream',
         filename=imp.file_name
     )
 
+
 @router.delete("/{supplier_id}/imports/{import_id}")
 async def delete_import(supplier_id: UUID, import_id: UUID, db: AsyncSession = Depends(get_db)):
     """Удалить импорт прайс-листа"""
     import os
-
+    
     result = await db.execute(
         select(ProductImport).where(
             ProductImport.id == import_id,
@@ -183,11 +210,12 @@ async def delete_import(supplier_id: UUID, import_id: UUID, db: AsyncSession = D
     imp = result.scalar_one_or_none()
     if not imp:
         raise HTTPException(status_code=404, detail="Import not found")
-
+    
+    # Удалить файл с диска
     if imp.file_url and os.path.exists(imp.file_url):
         os.remove(imp.file_url)
-
+    
     await db.delete(imp)
     await db.commit()
-
+    
     return {"deleted": True}

@@ -166,7 +166,7 @@ class Settings(BaseSettings):
     PARSING_PDF_USE_OCR: bool = True
     PARSING_PDF_OCR_LANGUAGE: str = "rus+eng"
     PARSING_COLUMN_DETECTION_MODE: str = "auto"
-    PARSING_REQUIRED_COLUMNS: str = "sku,name,price"
+    PARSING_REQUIRED_COLUMNS: str = "sku,name"
     PARSING_NORMALIZE_BRANDS: bool = True
     PARSING_NORMALIZE_CATEGORIES: bool = True
     PARSING_GENERATE_TAGS_AUTO: bool = True

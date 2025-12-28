@@ -67,5 +67,13 @@ class Supplier(BaseModel):
     product_imports = relationship("ProductImport", back_populates="supplier", cascade="all, delete-orphan")
     campaign_recipients = relationship("CampaignRecipient", back_populates="supplier", cascade="all, delete-orphan")
 
+    # Relationship to products
+    products = relationship(
+        "Product",
+        back_populates="supplier",
+        cascade="all, delete-orphan",
+        lazy="dynamic"
+    )
+
     def __repr__(self):
         return f"<Supplier {self.name} ({self.inn})>"

@@ -139,6 +139,7 @@ services:
     env_file:
       - .env
     volumes:
+      - ./uploads:/app/uploads
       - ./back:/app
       - api_logs:/app/logs
     ports:
