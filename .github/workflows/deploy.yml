@@ -1,4 +1,4 @@
-name: Deploy to VPS
+name: Smart Deploy
 
 on:
   push:
@@ -6,11 +6,34 @@ on:
   workflow_dispatch:
 
 jobs:
-  deploy:
+  detect-changes:
     runs-on: ubuntu-latest
-    
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      nginx: ${{ steps.filter.outputs.nginx }}
     steps:
-    - name: Deploy to VPS via SSH
+    - uses: actions/checkout@v3
+    - uses: dorny/paths-filter@v2
+      id: filter
+      with:
+        filters: |
+          backend:
+            - 'back/**'
+            - 'requirements.txt'
+            - 'docker-compose.yml'
+          frontend:
+            - 'front/**'
+            - 'package*.json'
+          nginx:
+            - 'nginx/**'
+
+  deploy-backend:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+    - name: Deploy Backend
       uses: appleboy/ssh-action@v1.0.0
       with:
         host: ${{ secrets.VPS_HOST }}
@@ -20,8 +43,43 @@ jobs:
         script: |
           cd /root/database-ai
           git pull origin main
-          docker compose down
-          docker compose build
-          docker compose up -d
-          echo "✅ Deployment completed at $(date)"
-          docker compose ps
+          docker compose build api celery_beat celery_worker_email celery_worker_parsing celery_worker_search
+          docker compose up -d api celery_beat celery_worker_email celery_worker_parsing celery_worker_search
+          echo "✅ Backend deployed at $(date)"
+
+  deploy-frontend:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+    - name: Deploy Frontend
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.VPS_HOST }}
+        username: ${{ secrets.VPS_USER }}
+        password: ${{ secrets.VPS_PASSWORD }}
+        port: ${{ secrets.VPS_PORT }}
+        script: |
+          cd /root/database-ai
+          git pull origin main
+          docker compose build frontend
+          docker compose up -d frontend
+          echo "✅ Frontend deployed at $(date)"
+
+  deploy-nginx:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.nginx == 'true'
+    runs-on: ubuntu-latest
+    steps:
+    - name: Deploy Nginx
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.VPS_HOST }}
+        username: ${{ secrets.VPS_USER }}
+        password: ${{ secrets.VPS_PASSWORD }}
+        port: ${{ secrets.VPS_PORT }}
+        script: |
+          cd /root/database-ai
+          git pull origin main
+          docker compose up -d nginx --force-recreate
+          echo "✅ Nginx deployed at $(date)"
