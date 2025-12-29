@@ -8,7 +8,7 @@ import logging
 from app.core.config import settings
 from app.core.database import db_manager
 from app.core.elasticsearch import es_manager
-from app.api import auth, suppliers, search, admin, campaigns
+from app.api import auth, suppliers, search, admin, campaigns, managers
 from app.middleware.audit import AuditMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
 
@@ -90,6 +90,7 @@ app.include_router(suppliers.router, prefix="/api/suppliers", tags=["Suppliers"]
 app.include_router(search.router, prefix="/api/search", tags=["Search"])
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
 app.include_router(campaigns.router, prefix="/api/campaigns", tags=["Email Campaigns"])
+app.include_router(managers.router, prefix="/api/managers", tags=["Managers"])
 
 
 @app.get("/")
