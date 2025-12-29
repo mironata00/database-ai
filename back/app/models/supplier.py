@@ -47,6 +47,9 @@ class Supplier(BaseModel):
 
     # Tags (denormalized for quick access)
     tags_array = Column(ARRAY(String))
+    
+    # Color for visual categorization
+    color = Column(String(7), nullable=False, server_default='#3B82F6')
 
     # Email Thread Tracking
     last_email_sent_at = Column(DateTime)

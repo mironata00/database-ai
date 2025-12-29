@@ -23,14 +23,13 @@ class SupplierBase(BaseModel):
     payment_terms: Optional[str] = None
     min_order_sum: Optional[Decimal] = None
     notes: Optional[str] = None
+    color: Optional[str] = '#3B82F6'
 
     @validator('website', pre=True, always=True)
     def validate_website(cls, v):
         if not v or v.strip() == '':
             return None
-        # Убираем пробелы
         v = v.strip()
-        # Если нет схемы - добавляем http://
         if not v.startswith(('http://', 'https://')):
             v = 'http://' + v
         return v
@@ -58,6 +57,7 @@ class SupplierUpdate(BaseModel):
     notes: Optional[str] = None
     rating: Optional[float] = None
     tags_array: Optional[List[str]] = None
+    color: Optional[str] = None
 
 
 class SupplierResponse(SupplierBase):
@@ -68,6 +68,7 @@ class SupplierResponse(SupplierBase):
     tags_array: Optional[List[str]] = None
     raw_data_url: Optional[str] = None
     import_source: Optional[str] = None
+    color: str = '#3B82F6'
     created_at: datetime
     updated_at: datetime
 

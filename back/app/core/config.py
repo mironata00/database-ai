@@ -133,7 +133,7 @@ class Settings(BaseSettings):
     EMAIL_SMTP_ENABLED: bool = True
     EMAIL_SMTP_CAROUSEL_ENABLED: bool = True
     EMAIL_SMTP_CAROUSEL_SWITCH_ON_LIMIT: bool = True
-    
+
     # SMTP Account #1
     EMAIL_SMTP_1_HOST: str
     EMAIL_SMTP_1_PORT: int = 587
@@ -144,7 +144,7 @@ class Settings(BaseSettings):
     EMAIL_SMTP_1_FROM_EMAIL: str
     EMAIL_SMTP_1_DAILY_LIMIT: int = 500
     EMAIL_SMTP_1_HOURLY_LIMIT: int = 50
-    
+
     # SMTP Account #2
     EMAIL_SMTP_2_HOST: Optional[str] = None
     EMAIL_SMTP_2_PORT: int = 587
@@ -155,7 +155,7 @@ class Settings(BaseSettings):
     EMAIL_SMTP_2_FROM_EMAIL: Optional[str] = None
     EMAIL_SMTP_2_DAILY_LIMIT: int = 500
     EMAIL_SMTP_2_HOURLY_LIMIT: int = 50
-    
+
     # SMTP Account #3
     EMAIL_SMTP_3_HOST: Optional[str] = None
     EMAIL_SMTP_3_PORT: int = 587
@@ -166,7 +166,7 @@ class Settings(BaseSettings):
     EMAIL_SMTP_3_FROM_EMAIL: Optional[str] = None
     EMAIL_SMTP_3_DAILY_LIMIT: int = 500
     EMAIL_SMTP_3_HOURLY_LIMIT: int = 50
-    
+
     # SMTP Account #4
     EMAIL_SMTP_4_HOST: Optional[str] = None
     EMAIL_SMTP_4_PORT: int = 587
@@ -177,7 +177,7 @@ class Settings(BaseSettings):
     EMAIL_SMTP_4_FROM_EMAIL: Optional[str] = None
     EMAIL_SMTP_4_DAILY_LIMIT: int = 500
     EMAIL_SMTP_4_HOURLY_LIMIT: int = 50
-    
+
     # SMTP Account #5
     EMAIL_SMTP_5_HOST: Optional[str] = None
     EMAIL_SMTP_5_PORT: int = 587
@@ -188,7 +188,7 @@ class Settings(BaseSettings):
     EMAIL_SMTP_5_FROM_EMAIL: Optional[str] = None
     EMAIL_SMTP_5_DAILY_LIMIT: int = 500
     EMAIL_SMTP_5_HOURLY_LIMIT: int = 50
-    
+
     # Global SMTP Settings
     EMAIL_SMTP_RATE_LIMIT_PER_MINUTE: int = 30
     EMAIL_SMTP_MAX_RECIPIENTS_PER_EMAIL: int = 1
@@ -258,6 +258,7 @@ class Settings(BaseSettings):
 
     # Search & Indexing
     SEARCH_MODE: str = "elasticsearch"
+    SEARCH_ELASTICSEARCH_ENABLED: bool = True
     SEARCH_FALLBACK_TO_POSTGRES: bool = True
     SEARCH_CACHE_RESULTS: bool = True
     SEARCH_CACHE_TTL: int = 1800
@@ -365,7 +366,7 @@ class Settings(BaseSettings):
             host = getattr(self, f"EMAIL_SMTP_{i}_HOST", None)
             user = getattr(self, f"EMAIL_SMTP_{i}_USER", None)
             password = getattr(self, f"EMAIL_SMTP_{i}_PASSWORD", None)
-            
+
             if host and user and password:
                 accounts.append({
                     "id": i,

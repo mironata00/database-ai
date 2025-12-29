@@ -2,13 +2,26 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Save, Upload } from 'lucide-react'
+import LayoutWithSidebar from '../../layout-with-sidebar'
+import { Save, Upload } from 'lucide-react'
+
+const AVAILABLE_COLORS = [
+  { hex: '#3B82F6', name: 'Синий (Вода)', category: 'water' },
+  { hex: '#EAB308', name: 'Желтый (Электрика)', category: 'electric' },
+  { hex: '#92400E', name: 'Коричневый (Дерево)', category: 'wood' },
+  { hex: '#9333EA', name: 'Фиолетовый (Химия)', category: 'chemical' },
+  { hex: '#6B7280', name: 'Серый (Разное)', category: 'other' },
+  { hex: '#EF4444', name: 'Красный', category: 'custom' },
+  { hex: '#10B981', name: 'Зеленый', category: 'custom' },
+  { hex: '#F59E0B', name: 'Оранжевый', category: 'custom' },
+]
 
 export default function AddSupplierPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [file, setFile] = useState<File | null>(null)
+  const [selectedColor, setSelectedColor] = useState('#3B82F6')
 
   const [formData, setFormData] = useState({
     name: '',
@@ -49,6 +62,7 @@ export default function AddSupplierPage() {
       const payload: any = {
         name: formData.name,
         inn: formData.inn,
+        color: selectedColor,
       }
       
       if (formData.kpp) payload.kpp = formData.kpp
@@ -96,7 +110,7 @@ export default function AddSupplierPage() {
         const formData = new FormData()
         formData.append('file', file)
 
-        const uploadResponse = await fetch(`${API_URL}/api/suppliers/${supplier.id}/upload-pricelist`, {
+        const uploadResponse = await fetch(`${API_URL}/api/suppliers/${supplier.id}/upload-pricelist-new`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -131,18 +145,10 @@ export default function AddSupplierPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <LayoutWithSidebar>
       <div className="bg-white border-b">
         <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center space-x-4">
-            <button
-              onClick={() => router.push('/')}
-              className="p-2 hover:bg-gray-100 rounded-lg"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-            <h1 className="text-xl font-semibold">Добавить поставщика</h1>
-          </div>
+          <h1 className="text-xl font-semibold">Добавить поставщика</h1>
         </div>
       </div>
 
@@ -153,6 +159,33 @@ export default function AddSupplierPage() {
               {error}
             </div>
           )}
+
+          {/* Выбор цвета */}
+          <div className="mb-8">
+            <h2 className="text-lg font-semibold mb-4">Цветовая категория</h2>
+            <p className="text-sm text-gray-600 mb-4">
+              Выберите цвет для визуальной категоризации поставщика. 
+              После загрузки прайс-листа цвет может быть автоматически определен по категориям товаров.
+            </p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {AVAILABLE_COLORS.map((color) => (
+                <button
+                  key={color.hex}
+                  type="button"
+                  onClick={() => setSelectedColor(color.hex)}
+                  className={`flex items-center space-x-3 p-3 border-2 rounded-lg hover:shadow-md transition ${
+                    selectedColor === color.hex ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
+                  }`}
+                >
+                  <div 
+                    className="w-8 h-8 rounded-full border-2 border-gray-300" 
+                    style={{ backgroundColor: color.hex }}
+                  />
+                  <span className="text-sm font-medium">{color.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
 
           {/* Основная информация */}
           <div className="mb-8">
@@ -430,6 +463,6 @@ export default function AddSupplierPage() {
           </div>
         </form>
       </div>
-    </div>
+    </LayoutWithSidebar>
   )
 }

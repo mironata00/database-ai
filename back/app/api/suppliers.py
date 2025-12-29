@@ -3,6 +3,7 @@ from app.models.product_import import ProductImport
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.elasticsearch import es_manager
+from app.core.config import settings
 from app.schemas.supplier import SupplierCreate, SupplierUpdate, SupplierResponse, SupplierListResponse
 from app.models.supplier import Supplier
 from app.tasks.parsing_tasks import parse_pricelist_task
@@ -19,26 +20,59 @@ async def search_suppliers_intelligent(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Интеллектуальный поиск по поставщикам через Elasticsearch
-    Ищет по: SKU, названиям товаров, брендам, категориям, тегам, названию поставщика
+    Интеллектуальный поиск по поставщикам
+    Использует Elasticsearch если включен, иначе простой поиск по БД
     """
-    
-    # Поиск в Elasticsearch по продуктам
+
+    # Если Elasticsearch отключен - используем простой поиск по БД
+    if not settings.SEARCH_ELASTICSEARCH_ENABLED:
+        query_pattern = f"%{q.lower()}%"
+        result = await db.execute(
+            select(Supplier).where(
+                or_(
+                    Supplier.name.ilike(query_pattern),
+                    func.array_to_string(Supplier.tags_array, ',').ilike(query_pattern)
+                )
+            ).limit(limit)
+        )
+        suppliers = result.scalars().all()
+
+        return {
+            "total": len(suppliers),
+            "query": q,
+            "search_mode": "database",
+            "results": [
+                {
+                    "supplier_id": str(s.id),
+                    "supplier_name": s.name,
+                    "supplier_inn": s.inn,
+                    "supplier_status": s.status.value if hasattr(s.status, 'value') else s.status,
+                    "supplier_rating": s.rating,
+                    "supplier_tags": s.tags_array or [],
+                    "supplier_color": s.color,
+                    "matched_products": 0,
+                    "max_score": 0,
+                    "example_products": [],
+                    "match_type": "supplier_name_or_tags"
+                }
+                for s in suppliers
+            ]
+        }
+
+    # Elasticsearch поиск
     es_response = await es_manager.search_products(
         query=q,
         filters={},
-        size=1000  # Берём больше для агрегации
+        size=1000
     )
-    
-    # Собираем supplier_ids и их matched_products из результатов
+
     supplier_stats = {}
-    products_by_supplier = {}
-    
+
     for hit in es_response.get("hits", {}).get("hits", []):
         source = hit["_source"]
         supplier_id = source.get("supplier_id")
         score = hit.get("_score", 0)
-        
+
         if supplier_id:
             if supplier_id not in supplier_stats:
                 supplier_stats[supplier_id] = {
@@ -46,11 +80,10 @@ async def search_suppliers_intelligent(
                     "max_score": 0,
                     "example_products": []
                 }
-            
+
             supplier_stats[supplier_id]["matched_count"] += 1
             supplier_stats[supplier_id]["max_score"] = max(supplier_stats[supplier_id]["max_score"], score)
-            
-            # Сохраняем топ-3 продукта
+
             if len(supplier_stats[supplier_id]["example_products"]) < 3:
                 supplier_stats[supplier_id]["example_products"].append({
                     "sku": source.get("sku"),
@@ -59,8 +92,8 @@ async def search_suppliers_intelligent(
                     "brand": source.get("brand"),
                     "score": score
                 })
-    
-    # Если ничего не нашли в продуктах - ищем по названию/тегам поставщика в БД
+
+    # Fallback на БД если ES не нашёл
     if not supplier_stats:
         query_pattern = f"%{q.lower()}%"
         result = await db.execute(
@@ -72,10 +105,11 @@ async def search_suppliers_intelligent(
             ).limit(limit)
         )
         suppliers = result.scalars().all()
-        
+
         return {
             "total": len(suppliers),
             "query": q,
+            "search_mode": "database_fallback",
             "results": [
                 {
                     "supplier_id": str(s.id),
@@ -84,6 +118,7 @@ async def search_suppliers_intelligent(
                     "supplier_status": s.status.value if hasattr(s.status, 'value') else s.status,
                     "supplier_rating": s.rating,
                     "supplier_tags": s.tags_array or [],
+                    "supplier_color": s.color,
                     "matched_products": 0,
                     "max_score": 0,
                     "example_products": [],
@@ -92,15 +127,13 @@ async def search_suppliers_intelligent(
                 for s in suppliers
             ]
         }
-    
-    # Получаем полные данные поставщиков из БД
+
     supplier_ids_list = list(supplier_stats.keys())
     result = await db.execute(
         select(Supplier).where(Supplier.id.in_(supplier_ids_list))
     )
     suppliers = {str(s.id): s for s in result.scalars().all()}
-    
-    # Формируем результаты с сортировкой по релевантности
+
     results = []
     for supplier_id, stats in supplier_stats.items():
         supplier = suppliers.get(supplier_id)
@@ -112,18 +145,19 @@ async def search_suppliers_intelligent(
                 "supplier_status": supplier.status.value if hasattr(supplier.status, 'value') else supplier.status,
                 "supplier_rating": supplier.rating,
                 "supplier_tags": supplier.tags_array or [],
+                "supplier_color": supplier.color,
                 "matched_products": stats["matched_count"],
                 "max_score": stats["max_score"],
                 "example_products": stats["example_products"],
                 "match_type": "products"
             })
-    
-    # Сортируем по релевантности (max_score * matched_count)
+
     results.sort(key=lambda x: x["max_score"] * x["matched_products"], reverse=True)
-    
+
     return {
         "total": len(results),
         "query": q,
+        "search_mode": "elasticsearch",
         "results": results[:limit]
     }
 

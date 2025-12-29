@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { useRouter } from 'next/navigation'
-import { Search, Users, Bell, Upload, LogOut, UserCog, Loader2 } from 'lucide-react'
+import { useRouter, usePathname } from 'next/navigation'
+import { Home, Building2, Search, FileText, LogOut, Menu, X, Loader2, UserCog } from 'lucide-react'
 
 interface Supplier {
   id: string
@@ -13,6 +13,7 @@ interface Supplier {
   is_blacklisted: boolean
   tags_array: string[]
   status: string
+  color: string
 }
 
 interface User {
@@ -24,6 +25,8 @@ interface User {
 
 export default function HomePage() {
   const router = useRouter()
+  const pathname = usePathname()
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [searchResults, setSearchResults] = useState<any[]>([])
   const [searchQuery, setSearchQuery] = useState('')
@@ -108,6 +111,7 @@ export default function HomePage() {
         email: null,
         is_blacklisted: false,
         tags_array: result.supplier_tags || [],
+        color: result.supplier_color || '#3B82F6',
         _search: {
           matched_products: result.matched_products,
           example_products: result.example_products
@@ -115,8 +119,18 @@ export default function HomePage() {
       }))
     : suppliers
 
+  const menuItems = [
+    { icon: Home, label: 'База поставщиков', path: '/' },
+    { icon: FileText, label: 'Заявки на проверку', path: '/requests', badge: 1 },
+  ]
+
+  if (user?.role === 'admin') {
+    menuItems.splice(1, 0, { icon: UserCog, label: 'Менеджеры', path: '/managers' })
+  }
+
   return (
     <div className="flex h-screen bg-gray-50">
+      {/* Sidebar */}
       <aside className="w-64 bg-slate-900 text-white flex flex-col">
         <div className="p-6 border-b border-slate-700">
           <div className="flex items-center space-x-3">
@@ -124,11 +138,14 @@ export default function HomePage() {
             <div><h1 className="font-semibold">DataBase AI</h1></div>
           </div>
         </div>
+
         {user && (
           <div className="px-6 py-4 border-b border-slate-700">
             <div className="text-xs text-slate-400 mb-2">ПОЛЬЗОВАТЕЛЬ</div>
             <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center font-semibold">{user.full_name?.charAt(0) || 'A'}</div>
+              <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center font-semibold">
+                {user.full_name?.charAt(0) || 'A'}
+              </div>
               <div className="flex-1">
                 <div className="text-sm font-medium">{user.full_name}</div>
                 <div className="text-xs text-slate-400 capitalize">{user.role}</div>
@@ -136,32 +153,40 @@ export default function HomePage() {
             </div>
           </div>
         )}
+
         <nav className="flex-1 p-4 space-y-1">
-          <button onClick={() => router.push('/')} className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg bg-blue-600 text-white font-medium">
-            <Search className="w-5 h-5" /><span>База поставщиков</span>
-          </button>
-          {user?.role === 'admin' && (
-            <button onClick={() => router.push('/managers')} className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-slate-800 text-slate-300">
-              <UserCog className="w-5 h-5" /><span>Менеджеры</span>
-            </button>
-          )}
-          <button onClick={() => router.push('/requests')} className="w-full flex items-center justify-between px-4 py-3 rounded-lg hover:bg-slate-800 text-slate-300">
-            <div className="flex items-center space-x-3">
-              <Bell className="w-5 h-5" /><span>Заявки на проверку</span>
-            </div>
-            <span className="px-2 py-0.5 bg-red-500 text-white text-xs rounded-full">1</span>
-          </button>
-          <button onClick={() => alert('Функция в разработке')} className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-slate-800 text-slate-300">
-            <Upload className="w-5 h-5" /><span>Импорт / AI Parse</span>
-          </button>
+          {menuItems.map((item) => {
+            const Icon = item.icon
+            const isActive = pathname === item.path
+            return (
+              <button
+                key={item.path}
+                onClick={() => router.push(item.path)}
+                className={`w-full flex items-center justify-between px-4 py-3 rounded-lg transition-colors ${
+                  isActive ? 'bg-blue-600 text-white font-medium' : 'text-slate-300 hover:bg-slate-800'
+                }`}
+              >
+                <div className="flex items-center space-x-3">
+                  <Icon className="w-5 h-5" />
+                  <span>{item.label}</span>
+                </div>
+                {item.badge && (
+                  <span className="px-2 py-0.5 bg-red-500 text-white text-xs rounded-full">{item.badge}</span>
+                )}
+              </button>
+            )
+          })}
         </nav>
+
         <div className="p-4 border-t border-slate-700">
           <button onClick={handleLogout} className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-slate-800 text-slate-300">
             <LogOut className="w-5 h-5" /><span>Выйти</span>
           </button>
         </div>
       </aside>
-      <main className="flex-1 flex flex-col overflow-hidden">
+
+      {/* Main content */}
+      <main className="flex-1 overflow-auto">
         <header className="bg-white border-b px-6 py-4">
           <div className="flex items-center space-x-4">
             <div className="flex-1 relative">
@@ -184,7 +209,8 @@ export default function HomePage() {
             </div>
           )}
         </header>
-        <div className="flex-1 overflow-auto p-8">
+
+        <div className="p-8">
           <h1 className="text-2xl font-bold mb-6">Список поставщиков</h1>
           {loading ? (
             <div className="flex items-center justify-center h-64">
@@ -197,42 +223,51 @@ export default function HomePage() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {displayedSuppliers.map((supplier: any) => (
-                <div key={supplier.id} onClick={() => handleSupplierClick(supplier.id)} className="bg-white rounded-lg p-4 border-2 border-gray-200 hover:border-blue-400 hover:shadow-lg transition cursor-pointer">
-                  <div className="mb-2">
-                    <h3 className="font-semibold text-gray-900">{supplier.name}</h3>
-                    <p className="text-sm text-gray-500">ИНН: {supplier.inn}</p>
-                  </div>
-                  <div className="flex items-center space-x-1 mb-2">
-                    <span className="text-yellow-500">★</span>
-                    <span className="text-sm text-gray-600">{supplier.rating ? supplier.rating.toFixed(1) : '0.0'}</span>
-                  </div>
-                  
-                  {supplier._search && supplier._search.matched_products > 0 && (
-                    <div className="mb-2 p-2 bg-blue-50 rounded">
-                      <div className="text-xs text-blue-600 font-medium">
-                        Найдено товаров: {supplier._search.matched_products}
+                <div 
+                  key={supplier.id} 
+                  onClick={() => handleSupplierClick(supplier.id)} 
+                  className="bg-white rounded-lg border-2 border-gray-200 hover:border-blue-400 hover:shadow-lg transition cursor-pointer overflow-hidden"
+                  style={{ borderLeft: `3px solid ${supplier.color || '#3B82F6'}` }}
+                >
+                  <div className="p-4">
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex-1">
+                        <h3 className="font-semibold text-gray-900">{supplier.name}</h3>
+                        <p className="text-sm text-gray-500">ИНН: {supplier.inn}</p>
                       </div>
-                      {supplier._search.example_products && supplier._search.example_products.length > 0 && (
-                        <div className="mt-1 space-y-1">
-                          {supplier._search.example_products.slice(0, 2).map((product: any, idx: number) => (
-                            <div key={idx} className="text-xs text-gray-600 truncate">
-                              {product.sku && <span className="font-mono">{product.sku}</span>}
-                              {product.name && <span className="ml-1">{product.name.substring(0, 30)}...</span>}
-                            </div>
-                          ))}
+                      <div className="flex items-center space-x-1 ml-2">
+                        <span className="text-yellow-500">★</span>
+                        <span className="text-sm font-medium text-gray-700">{supplier.rating ? supplier.rating.toFixed(1) : '0.0'}</span>
+                      </div>
+                    </div>
+                    
+                    {supplier._search && supplier._search.matched_products > 0 && (
+                      <div className="mb-2 p-2 bg-blue-50 rounded">
+                        <div className="text-xs text-blue-600 font-medium">
+                          Найдено товаров: {supplier._search.matched_products}
                         </div>
-                      )}
-                    </div>
-                  )}
-                  
-                  {supplier.tags_array && supplier.tags_array.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-2">
-                      {supplier.tags_array.slice(0, 3).map((tag: string, idx: number) => (
-                        <span key={idx} className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded">{tag}</span>
-                      ))}
-                      {supplier.tags_array.length > 3 && <span className="text-xs text-gray-500">+{supplier.tags_array.length - 3}</span>}
-                    </div>
-                  )}
+                        {supplier._search.example_products && supplier._search.example_products.length > 0 && (
+                          <div className="mt-1 space-y-1">
+                            {supplier._search.example_products.slice(0, 2).map((product: any, idx: number) => (
+                              <div key={idx} className="text-xs text-gray-600 truncate">
+                                {product.sku && <span className="font-mono text-gray-500">{product.sku}</span>}
+                                {product.name && <span className="ml-1">{product.name.substring(0, 40)}...</span>}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    
+                    {supplier.tags_array && supplier.tags_array.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {supplier.tags_array.slice(0, 3).map((tag: string, idx: number) => (
+                          <span key={idx} className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded">{tag}</span>
+                        ))}
+                        {supplier.tags_array.length > 3 && <span className="text-xs text-gray-500">+{supplier.tags_array.length - 3}</span>}
+                      </div>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>

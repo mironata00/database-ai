@@ -53,19 +53,41 @@ class ElasticsearchManager:
                     "fields": {
                         "exact": {"type": "keyword"},
                         "suggest": {"type": "completion"},
+                        "transliterated": {
+                            "type": "text",
+                            "analyzer": "transliteration_analyzer"
+                        }
                     },
                 },
                 "brand": {
                     "type": "keyword",
                     "normalizer": "lowercase_normalizer",
+                    "fields": {
+                        "text": {
+                            "type": "text",
+                            "analyzer": "russian_analyzer"
+                        }
+                    }
                 },
                 "category": {
                     "type": "keyword",
                     "normalizer": "lowercase_normalizer",
+                    "fields": {
+                        "text": {
+                            "type": "text",
+                            "analyzer": "russian_analyzer"
+                        }
+                    }
                 },
                 "tags": {
-                    "type": "keyword",
-                    "normalizer": "lowercase_normalizer",
+                    "type": "text",
+                    "analyzer": "russian_analyzer",
+                    "fields": {
+                        "keyword": {
+                            "type": "keyword",
+                            "normalizer": "lowercase_normalizer"
+                        }
+                    }
                 },
                 "price": {"type": "float"},
                 "unit": {"type": "keyword"},
@@ -82,6 +104,23 @@ class ElasticsearchManager:
             "number_of_replicas": settings.ES_INDEX_REPLICAS,
             "refresh_interval": settings.ES_REFRESH_INTERVAL,
             "analysis": {
+                "char_filter": {
+                    "transliteration_map": {
+                        "type": "mapping",
+                        "mappings": [
+                            "q=>й", "w=>ц", "e=>у", "r=>к", "t=>е", "y=>н", "u=>г",
+                            "i=>ш", "o=>щ", "p=>з", "[=>х", "]=>ъ", "a=>ф", "s=>ы",
+                            "d=>в", "f=>а", "g=>п", "h=>р", "j=>о", "k=>л", "l=>д",
+                            ";=>ж", "'=>э", "z=>я", "x=>ч", "c=>с", "v=>м", "b=>и",
+                            "n=>т", "m=>ь", ",=>б", ".=>ю",
+                            "Q=>Й", "W=>Ц", "E=>У", "R=>К", "T=>Е", "Y=>Н", "U=>Г",
+                            "I=>Ш", "O=>Щ", "P=>З", "{=>Х", "}=>Ъ", "A=>Ф", "S=>Ы",
+                            "D=>В", "F=>А", "G=>П", "H=>Р", "J=>О", "K=>Л", "L=>Д",
+                            ":=>Ж", "\"=>Э", "Z=>Я", "X=>Ч", "C=>С", "V=>М", "B=>И",
+                            "N=>Т", "M=>Ь", "<=>Б", ">=>Ю"
+                        ]
+                    }
+                },
                 "analyzer": {
                     "russian_analyzer": {
                         "type": "custom",
@@ -97,6 +136,16 @@ class ElasticsearchManager:
                         "tokenizer": "standard",
                         "filter": ["lowercase", "sku_ngram"],
                     },
+                    "transliteration_analyzer": {
+                        "type": "custom",
+                        "char_filter": ["transliteration_map"],
+                        "tokenizer": "standard",
+                        "filter": [
+                            "lowercase",
+                            "russian_stop",
+                            "russian_stemmer"
+                        ]
+                    }
                 },
                 "filter": {
                     "russian_stop": {
@@ -176,8 +225,18 @@ class ElasticsearchManager:
         filters: Optional[Dict[str, Any]] = None,
         size: int = 1000,
     ) -> Dict[str, Any]:
-        """Search products with advanced query."""
+        """
+        ИНТЕЛЛЕКТУАЛЬНЫЙ ПОИСК с максимальными возможностями:
+        - Fuzzy matching (опечатки)
+        - Стемминг (склонения и окончания)
+        - Транслитерация (английская раскладка)
+        - N-gram поиск по SKU
+        - Wildcard для частичного совпадения
+        - Phrase matching для точных фраз
+        """
+        
         should_clauses = [
+            # 1. ТОЧНОЕ совпадение SKU (максимальный приоритет)
             {
                 "term": {
                     "sku": {
@@ -186,6 +245,8 @@ class ElasticsearchManager:
                     }
                 }
             },
+            
+            # 2. N-GRAM поиск по SKU (частичное совпадение)
             {
                 "match": {
                     "sku.ngram": {
@@ -194,6 +255,8 @@ class ElasticsearchManager:
                     }
                 }
             },
+            
+            # 3. БРЕНД - точное совпадение
             {
                 "term": {
                     "brand": {
@@ -202,19 +265,91 @@ class ElasticsearchManager:
                     }
                 }
             },
+            
+            # 4. БРЕНД - с fuzzy (опечатки)
+            {
+                "match": {
+                    "brand.text": {
+                        "query": query,
+                        "fuzziness": "AUTO",
+                        "boost": settings.ES_SEARCH_BOOST_BRAND * 0.8,
+                    }
+                }
+            },
+            
+            # 5. НАЗВАНИЕ - с fuzzy и стеммингом
             {
                 "match": {
                     "name": {
                         "query": query,
-                        "fuzziness": settings.ES_SEARCH_FUZZINESS,
+                        "fuzziness": "AUTO",
+                        "operator": "or",
                         "boost": settings.ES_SEARCH_BOOST_NAME,
                     }
                 }
             },
+            
+            # 6. НАЗВАНИЕ - точная фраза (повышенный приоритет)
             {
-                "terms": {
-                    "tags": [tag.lower() for tag in query.split()],
-                    "boost": settings.ES_SEARCH_BOOST_TAGS,
+                "match_phrase": {
+                    "name": {
+                        "query": query,
+                        "boost": settings.ES_SEARCH_BOOST_NAME * 2,
+                    }
+                }
+            },
+            
+            # 7. ТРАНСЛИТЕРАЦИЯ - английская раскладка -> русская
+            {
+                "match": {
+                    "name.transliterated": {
+                        "query": query,
+                        "fuzziness": "AUTO",
+                        "boost": settings.ES_SEARCH_BOOST_NAME * 0.9,
+                    }
+                }
+            },
+            
+            # 8. ТЕГИ - с стеммингом
+            {
+                "match": {
+                    "tags": {
+                        "query": query,
+                        "fuzziness": "AUTO",
+                        "boost": settings.ES_SEARCH_BOOST_TAGS,
+                    }
+                }
+            },
+            
+            # 9. КАТЕГОРИЯ - с fuzzy
+            {
+                "match": {
+                    "category.text": {
+                        "query": query,
+                        "fuzziness": "AUTO",
+                        "boost": 2.0,
+                    }
+                }
+            },
+            
+            # 10. WILDCARD поиск для частичного совпадения
+            {
+                "wildcard": {
+                    "name": {
+                        "value": f"*{query.lower()}*",
+                        "boost": 1.0,
+                    }
+                }
+            },
+            
+            # 11. RAW TEXT - полнотекстовый поиск
+            {
+                "match": {
+                    "raw_text": {
+                        "query": query,
+                        "fuzziness": "AUTO",
+                        "boost": 1.5,
+                    }
                 }
             },
         ]
@@ -250,30 +385,7 @@ class ElasticsearchManager:
                 }
             },
             "min_score": settings.ES_SEARCH_MIN_SCORE,
-            "aggs": {
-                "suppliers": {
-                    "terms": {
-                        "field": "supplier_id",
-                        "size": settings.ES_SEARCH_AGGREGATION_SIZE,
-                    },
-                    "aggs": {
-                        "top_product": {
-                            "top_hits": {
-                                "size": 1,
-                                "_source": [
-                                    "name",
-                                    "sku",
-                                    "price",
-                                    "brand",
-                                    "supplier_name",
-                                ],
-                            }
-                        },
-                        "avg_price": {"avg": {"field": "price"}},
-                    },
-                }
-            },
-            "size": 0,
+            "size": size,
         }
         
         response = await self.client.search(
