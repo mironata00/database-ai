@@ -1,15 +1,131 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Query
 from app.models.product_import import ProductImport
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
+from app.core.elasticsearch import es_manager
 from app.schemas.supplier import SupplierCreate, SupplierUpdate, SupplierResponse, SupplierListResponse
 from app.models.supplier import Supplier
 from app.tasks.parsing_tasks import parse_pricelist_task
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 from typing import List, Optional
 from uuid import UUID
 
 router = APIRouter()
+
+@router.get("/search")
+async def search_suppliers_intelligent(
+    q: str = Query(..., min_length=2, description="Поисковый запрос"),
+    limit: int = Query(50, le=200),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Интеллектуальный поиск по поставщикам через Elasticsearch
+    Ищет по: SKU, названиям товаров, брендам, категориям, тегам, названию поставщика
+    """
+    
+    # Поиск в Elasticsearch по продуктам
+    es_response = await es_manager.search_products(
+        query=q,
+        filters={},
+        size=1000  # Берём больше для агрегации
+    )
+    
+    # Собираем supplier_ids и их matched_products из результатов
+    supplier_stats = {}
+    products_by_supplier = {}
+    
+    for hit in es_response.get("hits", {}).get("hits", []):
+        source = hit["_source"]
+        supplier_id = source.get("supplier_id")
+        score = hit.get("_score", 0)
+        
+        if supplier_id:
+            if supplier_id not in supplier_stats:
+                supplier_stats[supplier_id] = {
+                    "matched_count": 0,
+                    "max_score": 0,
+                    "example_products": []
+                }
+            
+            supplier_stats[supplier_id]["matched_count"] += 1
+            supplier_stats[supplier_id]["max_score"] = max(supplier_stats[supplier_id]["max_score"], score)
+            
+            # Сохраняем топ-3 продукта
+            if len(supplier_stats[supplier_id]["example_products"]) < 3:
+                supplier_stats[supplier_id]["example_products"].append({
+                    "sku": source.get("sku"),
+                    "name": source.get("name"),
+                    "price": source.get("price"),
+                    "brand": source.get("brand"),
+                    "score": score
+                })
+    
+    # Если ничего не нашли в продуктах - ищем по названию/тегам поставщика в БД
+    if not supplier_stats:
+        query_pattern = f"%{q.lower()}%"
+        result = await db.execute(
+            select(Supplier).where(
+                or_(
+                    Supplier.name.ilike(query_pattern),
+                    func.array_to_string(Supplier.tags_array, ',').ilike(query_pattern)
+                )
+            ).limit(limit)
+        )
+        suppliers = result.scalars().all()
+        
+        return {
+            "total": len(suppliers),
+            "query": q,
+            "results": [
+                {
+                    "supplier_id": str(s.id),
+                    "supplier_name": s.name,
+                    "supplier_inn": s.inn,
+                    "supplier_status": s.status.value if hasattr(s.status, 'value') else s.status,
+                    "supplier_rating": s.rating,
+                    "supplier_tags": s.tags_array or [],
+                    "matched_products": 0,
+                    "max_score": 0,
+                    "example_products": [],
+                    "match_type": "supplier_name_or_tags"
+                }
+                for s in suppliers
+            ]
+        }
+    
+    # Получаем полные данные поставщиков из БД
+    supplier_ids_list = list(supplier_stats.keys())
+    result = await db.execute(
+        select(Supplier).where(Supplier.id.in_(supplier_ids_list))
+    )
+    suppliers = {str(s.id): s for s in result.scalars().all()}
+    
+    # Формируем результаты с сортировкой по релевантности
+    results = []
+    for supplier_id, stats in supplier_stats.items():
+        supplier = suppliers.get(supplier_id)
+        if supplier:
+            results.append({
+                "supplier_id": supplier_id,
+                "supplier_name": supplier.name,
+                "supplier_inn": supplier.inn,
+                "supplier_status": supplier.status.value if hasattr(supplier.status, 'value') else supplier.status,
+                "supplier_rating": supplier.rating,
+                "supplier_tags": supplier.tags_array or [],
+                "matched_products": stats["matched_count"],
+                "max_score": stats["max_score"],
+                "example_products": stats["example_products"],
+                "match_type": "products"
+            })
+    
+    # Сортируем по релевантности (max_score * matched_count)
+    results.sort(key=lambda x: x["max_score"] * x["matched_products"], reverse=True)
+    
+    return {
+        "total": len(results),
+        "query": q,
+        "results": results[:limit]
+    }
 
 @router.get("/", response_model=SupplierListResponse)
 async def list_suppliers(
@@ -66,7 +182,6 @@ async def update_supplier(supplier_id: UUID, supplier_data: SupplierUpdate, db: 
     await db.refresh(supplier)
     return SupplierResponse.from_orm(supplier)
 
-# НОВОЕ: Добавляем PATCH endpoint (фронт использует PATCH)
 @router.patch("/{supplier_id}", response_model=SupplierResponse)
 async def patch_supplier(supplier_id: UUID, supplier_data: SupplierUpdate, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Supplier).where(Supplier.id == supplier_id))

@@ -34,3 +34,4 @@ __all__ = [
     "AuditLog",
     "AuditAction",
 ]
+from app.models.supplier_request import SupplierRequest

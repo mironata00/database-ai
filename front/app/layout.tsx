@@ -2,8 +2,11 @@ import './globals.css'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Database AI - Suppliers Management',
+  title: 'Database AI - CRM поставщиков строительных материалов',
   description: 'AI-powered supplier database management system',
+  icons: {
+    icon: '/favicon.svg',
+  },
 }
 
 export default function RootLayout({
