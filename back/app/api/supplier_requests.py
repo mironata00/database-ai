@@ -21,7 +21,7 @@ async def create_supplier_request(
     contact_phone: Optional[str] = Form(None),
     contact_telegram: Optional[str] = Form(None),
     notes: Optional[str] = Form(None),
-    pricelist: Optional[UploadFile] = File(None),
+    pricelists: List[UploadFile] = File([]),
     db: AsyncSession = Depends(get_db)
 ):
     """Создать заявку на добавление поставщика (публичный endpoint)"""
