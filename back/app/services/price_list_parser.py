@@ -171,7 +171,7 @@ class PriceListParser:
             row = df.iloc[i]
             score = 0
             row_values = [str(v).lower().strip() for v in row if not pd.isna(v)]
-            
+
             if len(row_values) == 0:
                 continue
 
@@ -187,7 +187,7 @@ class PriceListParser:
                     if keyword in val_clean:
                         keyword_matches += 1
                         break
-            
+
             if keyword_matches > 0:
                 score += keyword_matches * 20
 
@@ -204,7 +204,7 @@ class PriceListParser:
                     numeric_count += 1
                 except:
                     pass
-            
+
             if numeric_count / len(row_values) < 0.3:
                 score += 15
             else:
@@ -218,23 +218,21 @@ class PriceListParser:
         logger.info(f"First row values: {df.iloc[0].tolist()[:5]}")
         if best_row > 0:
             logger.info(f"Selected header row {best_row} values: {df.iloc[best_row].tolist()[:5]}")
-        
+
         return best_row
 
     def _normalize_text(self, text: str) -> str:
         """Нормализует текст товара."""
         import re
-        
+
         if not text or pd.isna(text):
             return ""
-        
+
         text = str(text)
-        # Убираем запятые полностью
         text = text.replace(',', '')
-        # Убираем множественные пробелы
         text = re.sub(r'\s+', ' ', text)
         text = text.strip()
-        
+
         return text
 
     def _extract_products(self, df: pd.DataFrame, detected_columns: Dict[str, str]) -> List[Dict]:
@@ -299,6 +297,10 @@ class PriceListParser:
         tags = set()
 
         for product in products:
+            # НОВОЕ: Добавляем SKU (артикулы/коды) в теги
+            if 'sku' in product and product['sku']:
+                tags.add(product['sku'].strip())
+
             if 'brand' in product and product['brand']:
                 tags.add(product['brand'])
 
@@ -311,7 +313,7 @@ class PriceListParser:
                     if len(word) > 3 and not word.isdigit():
                         tags.add(word)
 
-        tags = sorted(list(tags))[:settings.PARSING_MAX_TAGS_PER_SUPPLIER]
+        tags = sorted(list(tags))
 
         logger.info(f"Generated {len(tags)} unique tags")
         return tags

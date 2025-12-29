@@ -66,6 +66,21 @@ async def update_supplier(supplier_id: UUID, supplier_data: SupplierUpdate, db: 
     await db.refresh(supplier)
     return SupplierResponse.from_orm(supplier)
 
+# НОВОЕ: Добавляем PATCH endpoint (фронт использует PATCH)
+@router.patch("/{supplier_id}", response_model=SupplierResponse)
+async def patch_supplier(supplier_id: UUID, supplier_data: SupplierUpdate, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Supplier).where(Supplier.id == supplier_id))
+    supplier = result.scalar_one_or_none()
+    if not supplier:
+        raise HTTPException(status_code=404, detail="Supplier not found")
+
+    for key, value in supplier_data.dict(exclude_unset=True).items():
+        setattr(supplier, key, value)
+
+    await db.commit()
+    await db.refresh(supplier)
+    return SupplierResponse.from_orm(supplier)
+
 @router.get("/{supplier_id}/imports")
 async def get_supplier_imports(supplier_id: UUID, db: AsyncSession = Depends(get_db)):
     """Получить историю импортов"""

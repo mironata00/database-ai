@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { ArrowLeft, Mail, Phone, Globe, MapPin, Star, Upload, Download, X, Plus, Trash2 } from 'lucide-react'
 
@@ -16,8 +16,9 @@ export default function SupplierDetailPage() {
   const [uploadProgress, setUploadProgress] = useState(0)
   const [tags, setTags] = useState<string[]>([])
   const [newTag, setNewTag] = useState('')
+  const prevImportsRef = useRef<any[]>([])
 
-  const API_URL = typeof window !== 'undefined' 
+  const API_URL = typeof window !== 'undefined'
     ? `http://${window.location.hostname}`
     : 'http://localhost'
 
@@ -27,6 +28,29 @@ export default function SupplierDetailPage() {
     const interval = setInterval(fetchImports, 3000)
     return () => clearInterval(interval)
   }, [])
+
+  // АВТОПОДГРУЗКА ТЕГОВ: Отслеживаем изменение статуса с processing на completed
+  useEffect(() => {
+    const prevImports = prevImportsRef.current
+    
+    // Проверяем: был ли хотя бы один import со статусом processing
+    const hadProcessing = prevImports.some(imp => imp.status === 'processing')
+    
+    // Проверяем: есть ли сейчас completed, которого не было раньше
+    const hasNewCompleted = imports.some(imp => {
+      const wasProcessing = prevImports.find(prev => prev.id === imp.id && prev.status === 'processing')
+      return imp.status === 'completed' && wasProcessing
+    })
+
+    // Если был processing и появился completed - обновляем supplier (теги)
+    if (hadProcessing && hasNewCompleted) {
+      console.log('Парсинг завершён! Обновляю теги...')
+      fetchSupplier()
+    }
+
+    // Сохраняем текущие imports для следующей проверки
+    prevImportsRef.current = imports
+  }, [imports])
 
   const fetchSupplier = async () => {
     try {
@@ -125,11 +149,11 @@ export default function SupplierDetailPage() {
   const downloadFile = async (importId: string, fileName: string) => {
     const token = localStorage.getItem('access_token')
     const url = `${API_URL}/api/suppliers/${params.id}/download/${importId}`
-    
+
     const response = await fetch(url, {
       headers: { 'Authorization': `Bearer ${token}` }
     })
-    
+
     if (response.ok) {
       const blob = await response.blob()
       const downloadUrl = window.URL.createObjectURL(blob)
@@ -152,7 +176,7 @@ export default function SupplierDetailPage() {
         },
         body: JSON.stringify({ tags_array: newTags })
       })
-      
+
       if (response.ok) {
         const updated = await response.json()
         setSupplier(updated)
@@ -177,7 +201,7 @@ export default function SupplierDetailPage() {
         },
         body: JSON.stringify({ rating })
       })
-      
+
       if (response.ok) {
         const updated = await response.json()
         setSupplier(updated)
@@ -201,6 +225,13 @@ export default function SupplierDetailPage() {
     const newTags = tags.filter(t => t !== tagToRemove)
     setTags(newTags)
     saveTags(newTags)
+  }
+
+  // НОВОЕ: Удаление всех тегов
+  const clearAllTags = () => {
+    if (!confirm('Удалить все теги?')) return
+    setTags([])
+    saveTags([])
   }
 
   if (loading) return <div className="min-h-screen flex items-center justify-center"><div>Загрузка...</div></div>
@@ -321,7 +352,15 @@ export default function SupplierDetailPage() {
             </div>
 
             <div className="bg-white rounded-lg border p-6">
-              <h2 className="text-lg font-semibold mb-4">Теги</h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold">Теги</h2>
+                {tags.length > 0 && (
+                  <button onClick={clearAllTags} className="text-xs text-red-600 hover:underline flex items-center space-x-1">
+                    <Trash2 className="w-3 h-3" />
+                    <span>Очистить все</span>
+                  </button>
+                )}
+              </div>
               <div className="mb-3 flex space-x-2">
                 <input
                   type="text"
@@ -349,7 +388,7 @@ export default function SupplierDetailPage() {
 
             <div className="bg-white rounded-lg border p-6">
               <h2 className="text-lg font-semibold mb-4">Прайс-листы ({imports.length})</h2>
-              
+
               <div className="mb-4">
                 <input
                   type="file"
@@ -393,7 +432,7 @@ export default function SupplierDetailPage() {
                         {imp.status === 'pending' && <span className="text-xs text-gray-600">⏸</span>}
                       </div>
                     </div>
-                    
+
                     {imp.status === 'processing' && imp.total_products > 0 && (
                       <div className="mb-2">
                         <div className="w-full bg-gray-200 rounded-full h-1 mb-1">
@@ -402,7 +441,7 @@ export default function SupplierDetailPage() {
                         <div className="text-xs text-gray-600">{imp.parsed_products} / {imp.total_products}</div>
                       </div>
                     )}
-                    
+
                     <div className="flex items-center space-x-3">
                       <button onClick={() => downloadFile(imp.id, imp.file_name)} className="text-xs text-blue-600 hover:underline flex items-center space-x-1">
                         <Download className="w-3 h-3" />

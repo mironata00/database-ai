@@ -10,13 +10,19 @@ from sqlalchemy import select
 import logging
 import tempfile
 import os
+import asyncio
 
 logger = logging.getLogger(__name__)
 
 
 @celery_app.task(name="app.tasks.parsing_tasks.parse_pricelist_task", bind=True)
 def parse_pricelist_task(self, supplier_id: str, filename: str, file_content: bytes):
-    import asyncio
+    # ИСПРАВЛЕНИЕ: Получаем или создаём event loop для текущего потока
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
 
     async def async_parse():
         with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(filename)[1]) as tmp_file:
@@ -26,7 +32,7 @@ def parse_pricelist_task(self, supplier_id: str, filename: str, file_content: by
         import_id = None
 
         try:
-            # ИСПРАВЛЕНИЕ: Ищем существующую запись вместо создания новой!
+            # Ищем существующую запись
             async for session in db_manager.get_session():
                 result = await session.execute(
                     select(ProductImport)
@@ -41,13 +47,11 @@ def parse_pricelist_task(self, supplier_id: str, filename: str, file_content: by
                 import_record = result.scalar_one_or_none()
 
                 if import_record:
-                    # Нашли существующую - обновляем статус
                     import_record.status = ImportStatus.PROCESSING
                     import_record.file_size = len(file_content)
                     import_record.file_format = os.path.splitext(filename)[1]
                     logger.info(f"Using existing import record {import_record.id}")
                 else:
-                    # Не нашли - создаём новую (fallback)
                     import_record = ProductImport(
                         supplier_id=supplier_id,
                         file_name=filename,
@@ -163,7 +167,10 @@ def parse_pricelist_task(self, supplier_id: str, filename: str, file_content: by
                         select(Supplier).where(Supplier.id == supplier_id)
                     )
                     supplier = result.scalar_one()
-                    supplier.tags_array = parse_result.get("tags", [])
+                    # ИСПРАВЛЕНИЕ: Добавляем новые теги к существующим (без дублей)
+                    existing_tags = set(supplier.tags_array or [])
+                    new_tags = set(parse_result.get("tags", []))
+                    supplier.tags_array = list(existing_tags | new_tags)
                     await session.commit()
 
             logger.info(f"Successfully parsed and indexed {len(products)} products for supplier {supplier_id}")
@@ -207,4 +214,5 @@ def parse_pricelist_task(self, supplier_id: str, filename: str, file_content: by
             except:
                 pass
 
-    return asyncio.run(async_parse())
+    # ИСПРАВЛЕНИЕ: Используем существующий loop вместо asyncio.run()
+    return loop.run_until_complete(async_parse())

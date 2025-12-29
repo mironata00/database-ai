@@ -170,7 +170,7 @@ class Settings(BaseSettings):
     PARSING_NORMALIZE_BRANDS: bool = True
     PARSING_NORMALIZE_CATEGORIES: bool = True
     PARSING_GENERATE_TAGS_AUTO: bool = True
-    PARSING_MAX_TAGS_PER_SUPPLIER: int = 500
+    PARSING_MAX_TAGS_PER_SUPPLIER: int = 100000
     
     # Column Synonyms
     PARSING_COLUMN_SKU_SYNONYMS: str = "sku|артикул|код|article|арт|код товара|артикул товара|vendor code|item code|part number|партномер|каталожный номер"
