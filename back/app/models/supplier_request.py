@@ -1,22 +1,26 @@
-from sqlalchemy import Column, String, DateTime, Text
-from sqlalchemy.dialects.postgresql import UUID, JSONB
-from app.models.base import Base
+from sqlalchemy import Column, String, TIMESTAMP, Text
+from sqlalchemy.dialects.postgresql import UUID, JSONB, ARRAY
+from app.models.base import BaseModel
 import uuid
 from datetime import datetime
 
-class SupplierRequest(Base):
+class SupplierRequest(BaseModel):
     __tablename__ = "supplier_requests"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    status = Column(String(20), default="pending", nullable=False)
+    status = Column(String(20), nullable=False, default="pending")
     data = Column(JSONB, nullable=False)
-    pricelist_filename = Column(String(500))
-    pricelist_url = Column(String(1000))
-    contact_email = Column(String(255))
-    contact_phone = Column(String(50))
-    contact_telegram = Column(String(100))
-    created_at = Column(DateTime, default=datetime.utcnow)
-    reviewed_at = Column(DateTime)
-    reviewed_by = Column(String(255))
-    rejection_reason = Column(Text)
-    notes = Column(Text)
+    
+    pricelist_filenames = Column(ARRAY(String), nullable=True)
+    pricelist_urls = Column(ARRAY(String), nullable=True)
+    
+    contact_email = Column(String(255), nullable=True)
+    contact_phone = Column(String(50), nullable=True)
+    contact_telegram = Column(String(100), nullable=True)
+    
+    created_at = Column(TIMESTAMP, default=datetime.utcnow)
+    reviewed_at = Column(TIMESTAMP, nullable=True)
+    reviewed_by = Column(String(255), nullable=True)
+    
+    rejection_reason = Column(Text, nullable=True)
+    notes = Column(Text, nullable=True)

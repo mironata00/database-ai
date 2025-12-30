@@ -24,7 +24,7 @@ export default function RequestDetailPage() {
   const fetchRequest = async () => {
     try {
       const token = localStorage.getItem('access_token')
-      const response = await fetch(`${API_URL}/api/requests/${params.id}`, {
+      const response = await fetch(`${API_URL}/api/supplier-requests/${params.id}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
       if (response.ok) {
@@ -49,7 +49,7 @@ export default function RequestDetailPage() {
       const formData = new FormData()
       formData.append('admin_email', adminEmail)
 
-      const response = await fetch(`${API_URL}/api/requests/${params.id}/approve`, {
+      const response = await fetch(`${API_URL}/api/supplier-requests/${params.id}/approve`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` },
         body: formData
@@ -84,7 +84,7 @@ export default function RequestDetailPage() {
       formData.append('admin_email', adminEmail)
       formData.append('reason', rejectionReason)
 
-      const response = await fetch(`${API_URL}/api/requests/${params.id}/reject`, {
+      const response = await fetch(`${API_URL}/api/supplier-requests/${params.id}/reject`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` },
         body: formData
@@ -108,7 +108,7 @@ export default function RequestDetailPage() {
   const downloadPricelist = async () => {
     try {
       const token = localStorage.getItem('access_token')
-      const response = await fetch(`${API_URL}/api/requests/${params.id}/download`, {
+      const response = await fetch(`${API_URL}/api/supplier-requests/${params.id}/download`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
 

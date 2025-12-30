@@ -70,7 +70,7 @@ export default function SubmitRequestPage() {
         requestFormData.append('pricelist', file)
       }
 
-      const response = await fetch(`${API_URL}/api/requests/`, {
+      const response = await fetch(`${API_URL}/api/supplier-requests/`, {
         method: 'POST',
         body: requestFormData
       })

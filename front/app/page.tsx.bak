@@ -1,0 +1,31 @@
+'use client'
+
+import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import LayoutWithSidebar from './layout-with-sidebar'
+
+export default function HomePage() {
+  const router = useRouter()
+
+  useEffect(() => {
+    const token = localStorage.getItem('access_token')
+    if (!token) {
+      router.push('/login')
+      return
+    }
+    
+    // Перенаправляем на страницу поставщиков
+    router.push('/suppliers')
+  }, [router])
+
+  return (
+    <LayoutWithSidebar>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-block w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-2"></div>
+          <div className="text-gray-500">Загрузка...</div>
+        </div>
+      </div>
+    </LayoutWithSidebar>
+  )
+}

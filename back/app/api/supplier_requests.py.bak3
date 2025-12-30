@@ -32,30 +32,28 @@ async def create_supplier_request(
     except:
         raise HTTPException(status_code=400, detail="Invalid JSON data")
     
-    pricelist_filenames = []
-    pricelist_urls = []
+    pricelist_filename = None
+    pricelist_url = None
     
-    # Обрабатываем все загруженные файлы
     if pricelists and len(pricelists) > 0:
+        pricelist = pricelists[0]
         upload_dir = "/app/uploads/requests"
         os.makedirs(upload_dir, exist_ok=True)
         
-        for pricelist in pricelists:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = pricelist.filename
-            filepath = os.path.join(upload_dir, f"{timestamp}_{filename}")
-            
-            content = await pricelist.read()
-            with open(filepath, "wb") as f:
-                f.write(content)
-            
-            pricelist_filenames.append(filename)
-            pricelist_urls.append(filepath)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        pricelist_filename = pricelist.filename
+        filepath = os.path.join(upload_dir, f"{timestamp}_{pricelist_filename}")
+        
+        content = await pricelist.read()
+        with open(filepath, "wb") as f:
+            f.write(content)
+        
+        pricelist_url = filepath
     
     request = SupplierRequest(
         data=supplier_data,
-        pricelist_filenames=pricelist_filenames if pricelist_filenames else None,
-        pricelist_urls=pricelist_urls if pricelist_urls else None,
+        pricelist_filename=pricelist_filename,
+        pricelist_url=pricelist_url,
         contact_email=contact_email,
         contact_phone=contact_phone,
         contact_telegram=contact_telegram,
@@ -153,37 +151,33 @@ async def approve_supplier_request(
         await db.rollback()
         raise HTTPException(status_code=500, detail=f"Ошибка создания поставщика: {str(e)}")
     
-    # Если есть прайс-листы - запускаем парсинг для каждого
-    if request.pricelist_urls:
-        for idx, pricelist_url in enumerate(request.pricelist_urls):
-            if os.path.exists(pricelist_url):
-                try:
-                    with open(pricelist_url, "rb") as f:
-                        content = f.read()
-                    
-                    from app.models.product_import import ProductImport
-                    
-                    filename = request.pricelist_filenames[idx] if request.pricelist_filenames else f"file_{idx}"
-                    
-                    import_record = ProductImport(
-                        supplier_id=supplier.id,
-                        file_name=filename,
-                        file_url=pricelist_url,
-                        file_size=len(content),
-                        status="pending",
-                        total_products=0,
-                        parsed_products=0
-                    )
-                    
-                    db.add(import_record)
-                    await db.commit()
-                    await db.refresh(import_record)
-                    
-                    task = parse_pricelist_task.delay(str(supplier.id), filename, content)
-                    import_record.task_id = task.id
-                    await db.commit()
-                except Exception as e:
-                    print(f"Error starting parsing task for file {idx}: {e}")
+    # Если есть прайс-лист - запускаем парсинг
+    if request.pricelist_url and os.path.exists(request.pricelist_url):
+        try:
+            with open(request.pricelist_url, "rb") as f:
+                content = f.read()
+            
+            from app.models.product_import import ProductImport
+            
+            import_record = ProductImport(
+                supplier_id=supplier.id,
+                file_name=request.pricelist_filename,
+                file_url=request.pricelist_url,
+                file_size=len(content),
+                status="pending",
+                total_products=0,
+                parsed_products=0
+            )
+            
+            db.add(import_record)
+            await db.commit()
+            await db.refresh(import_record)
+            
+            task = parse_pricelist_task.delay(str(supplier.id), request.pricelist_filename, content)
+            import_record.task_id = task.id
+            await db.commit()
+        except Exception as e:
+            print(f"Error starting parsing task: {e}")
     
     # Обновляем статус заявки
     request.status = "approved"
@@ -256,13 +250,9 @@ async def update_supplier_request(
     
     return request
 
-@router.get("/{request_id}/download/{file_index}")
-async def download_pricelist(
-    request_id: UUID, 
-    file_index: int,
-    db: AsyncSession = Depends(get_db)
-):
-    """Скачать прайс-лист из заявки по индексу"""
+@router.get("/{request_id}/download")
+async def download_pricelist(request_id: UUID, db: AsyncSession = Depends(get_db)):
+    """Скачать прайс-лист из заявки"""
     from fastapi.responses import FileResponse
     
     result = await db.execute(
@@ -270,20 +260,14 @@ async def download_pricelist(
     )
     request = result.scalar_one_or_none()
     
-    if not request or not request.pricelist_urls:
+    if not request or not request.pricelist_url:
         raise HTTPException(status_code=404, detail="Pricelist not found")
     
-    if file_index < 0 or file_index >= len(request.pricelist_urls):
-        raise HTTPException(status_code=404, detail="File index out of range")
-    
-    filepath = request.pricelist_urls[file_index]
-    filename = request.pricelist_filenames[file_index] if request.pricelist_filenames else f"pricelist_{file_index}"
-    
-    if not os.path.exists(filepath):
+    if not os.path.exists(request.pricelist_url):
         raise HTTPException(status_code=404, detail="File not found on disk")
     
     return FileResponse(
-        filepath,
+        request.pricelist_url,
         media_type='application/octet-stream',
-        filename=filename
+        filename=request.pricelist_filename
     )

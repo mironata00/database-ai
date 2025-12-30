@@ -86,7 +86,7 @@ app.include_router(search.router, prefix="/api/search", tags=["Search"])
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
 app.include_router(campaigns.router, prefix="/api/campaigns", tags=["Email Campaigns"])
 app.include_router(managers.router, prefix="/api/managers", tags=["Managers"])
-app.include_router(supplier_requests.router, prefix="/api/supplier-requests", tags=["Supplier Requests"])  # НОВОЕ
+app.include_router(supplier_requests.router, prefix="/api/requests", tags=["Supplier Requests"])  # НОВОЕ
 
 @app.get("/")
 async def root():
