@@ -21,7 +21,7 @@ export default function ManagersPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [roleFilter, setRoleFilter] = useState<string>('all')
   const [statusFilter, setStatusFilter] = useState<string>('all')
-  const API_URL = typeof window !== 'undefined' ? `http://${window.location.hostname}` : 'http://localhost'
+  const API_URL = typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.host}` : 'http://localhost'
 
   useEffect(() => { checkAuth() }, [])
   useEffect(() => { if (!loading) { fetchManagers() } }, [roleFilter, statusFilter])

@@ -35,7 +35,7 @@ export default function SubmitRequestPage() {
   const [success, setSuccess] = useState(false)
 
   const API_URL = typeof window !== 'undefined'
-    ? `http://${window.location.hostname}`
+    ? `https://${window.location.hostname}`
     : 'http://localhost'
 
   const handleSubmit = async (e: React.FormEvent) => {

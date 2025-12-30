@@ -126,10 +126,12 @@ class Settings(BaseSettings):
     EMAIL_IMAP_BATCH_SIZE: int = Field(env="EMAIL_IMAP_BATCH_SIZE")
     EMAIL_IMAP_MARK_AS_READ: bool = Field(env="EMAIL_IMAP_MARK_AS_READ")
 
-    # Email SMTP
+    # Email SMTP Carousel
     EMAIL_SMTP_ENABLED: bool = Field(env="EMAIL_SMTP_ENABLED")
     EMAIL_SMTP_CAROUSEL_ENABLED: bool = Field(env="EMAIL_SMTP_CAROUSEL_ENABLED")
     EMAIL_SMTP_CAROUSEL_SWITCH_ON_LIMIT: bool = Field(env="EMAIL_SMTP_CAROUSEL_SWITCH_ON_LIMIT")
+
+    # SMTP Accounts
     EMAIL_SMTP_1_HOST: str = Field(env="EMAIL_SMTP_1_HOST")
     EMAIL_SMTP_1_PORT: int = Field(env="EMAIL_SMTP_1_PORT")
     EMAIL_SMTP_1_USER: str = Field(env="EMAIL_SMTP_1_USER")
@@ -139,6 +141,7 @@ class Settings(BaseSettings):
     EMAIL_SMTP_1_FROM_EMAIL: str = Field(env="EMAIL_SMTP_1_FROM_EMAIL")
     EMAIL_SMTP_1_DAILY_LIMIT: int = Field(env="EMAIL_SMTP_1_DAILY_LIMIT")
     EMAIL_SMTP_1_HOURLY_LIMIT: int = Field(env="EMAIL_SMTP_1_HOURLY_LIMIT")
+
     EMAIL_SMTP_2_HOST: Optional[str] = Field(env="EMAIL_SMTP_2_HOST")
     EMAIL_SMTP_2_PORT: int = Field(env="EMAIL_SMTP_2_PORT")
     EMAIL_SMTP_2_USER: Optional[str] = Field(env="EMAIL_SMTP_2_USER")
@@ -148,6 +151,7 @@ class Settings(BaseSettings):
     EMAIL_SMTP_2_FROM_EMAIL: Optional[str] = Field(env="EMAIL_SMTP_2_FROM_EMAIL")
     EMAIL_SMTP_2_DAILY_LIMIT: int = Field(env="EMAIL_SMTP_2_DAILY_LIMIT")
     EMAIL_SMTP_2_HOURLY_LIMIT: int = Field(env="EMAIL_SMTP_2_HOURLY_LIMIT")
+
     EMAIL_SMTP_3_HOST: Optional[str] = Field(env="EMAIL_SMTP_3_HOST")
     EMAIL_SMTP_3_PORT: int = Field(env="EMAIL_SMTP_3_PORT")
     EMAIL_SMTP_3_USER: Optional[str] = Field(env="EMAIL_SMTP_3_USER")
@@ -157,6 +161,7 @@ class Settings(BaseSettings):
     EMAIL_SMTP_3_FROM_EMAIL: Optional[str] = Field(env="EMAIL_SMTP_3_FROM_EMAIL")
     EMAIL_SMTP_3_DAILY_LIMIT: int = Field(env="EMAIL_SMTP_3_DAILY_LIMIT")
     EMAIL_SMTP_3_HOURLY_LIMIT: int = Field(env="EMAIL_SMTP_3_HOURLY_LIMIT")
+
     EMAIL_SMTP_4_HOST: Optional[str] = Field(env="EMAIL_SMTP_4_HOST")
     EMAIL_SMTP_4_PORT: int = Field(env="EMAIL_SMTP_4_PORT")
     EMAIL_SMTP_4_USER: Optional[str] = Field(env="EMAIL_SMTP_4_USER")
@@ -166,6 +171,7 @@ class Settings(BaseSettings):
     EMAIL_SMTP_4_FROM_EMAIL: Optional[str] = Field(env="EMAIL_SMTP_4_FROM_EMAIL")
     EMAIL_SMTP_4_DAILY_LIMIT: int = Field(env="EMAIL_SMTP_4_DAILY_LIMIT")
     EMAIL_SMTP_4_HOURLY_LIMIT: int = Field(env="EMAIL_SMTP_4_HOURLY_LIMIT")
+
     EMAIL_SMTP_5_HOST: Optional[str] = Field(env="EMAIL_SMTP_5_HOST")
     EMAIL_SMTP_5_PORT: int = Field(env="EMAIL_SMTP_5_PORT")
     EMAIL_SMTP_5_USER: Optional[str] = Field(env="EMAIL_SMTP_5_USER")
@@ -175,6 +181,7 @@ class Settings(BaseSettings):
     EMAIL_SMTP_5_FROM_EMAIL: Optional[str] = Field(env="EMAIL_SMTP_5_FROM_EMAIL")
     EMAIL_SMTP_5_DAILY_LIMIT: int = Field(env="EMAIL_SMTP_5_DAILY_LIMIT")
     EMAIL_SMTP_5_HOURLY_LIMIT: int = Field(env="EMAIL_SMTP_5_HOURLY_LIMIT")
+
     EMAIL_SMTP_RATE_LIMIT_PER_MINUTE: int = Field(env="EMAIL_SMTP_RATE_LIMIT_PER_MINUTE")
     EMAIL_SMTP_MAX_RECIPIENTS_PER_EMAIL: int = Field(env="EMAIL_SMTP_MAX_RECIPIENTS_PER_EMAIL")
     EMAIL_SMTP_RETRY_ATTEMPTS: int = Field(env="EMAIL_SMTP_RETRY_ATTEMPTS")
@@ -264,7 +271,7 @@ class Settings(BaseSettings):
     SENTRY_DSN: Optional[str] = Field(env="SENTRY_DSN")
     SENTRY_ENVIRONMENT: str = Field(env="SENTRY_ENVIRONMENT")
 
-    # Business
+    # Business Logic
     SUPPLIER_DEFAULT_STATUS: str = Field(env="SUPPLIER_DEFAULT_STATUS")
     SUPPLIER_AUTO_APPROVE: bool = Field(env="SUPPLIER_AUTO_APPROVE")
     RATING_MIN_VALUE: int = Field(env="RATING_MIN_VALUE")
@@ -290,23 +297,19 @@ class Settings(BaseSettings):
     FEATURE_IMAP_AUTO_IMPORT: bool = Field(env="FEATURE_IMAP_AUTO_IMPORT")
     FEATURE_AI_PARSING: bool = Field(env="FEATURE_AI_PARSING")
 
-    # HTTPS
+    # HTTPS Settings
     NGINX_HTTPS_EXTERNAL_PORT: int = Field(env="NGINX_HTTPS_EXTERNAL_PORT")
     FRONTEND_BASE_URL: str = Field(env="FRONTEND_BASE_URL")
     API_BASE_URL: str = Field(env="API_BASE_URL")
-    
-    # External Sites
-    EXTERNAL_SITES: str = Field(env="EXTERNAL_SITES")
 
     @property
     def DATABASE_URL(self) -> str:
-        return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
-
     @property
     def DATABASE_URL_REPLICA(self) -> Optional[str]:
         if self.POSTGRES_REPLICA_ENABLED and self.POSTGRES_REPLICA_HOST:
             return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_REPLICA_HOST}:{self.POSTGRES_REPLICA_PORT}/{self.POSTGRES_DB}"
         return None
+        return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
 
     @property
     def REDIS_URL(self) -> str:

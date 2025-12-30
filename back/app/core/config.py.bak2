@@ -294,9 +294,6 @@ class Settings(BaseSettings):
     NGINX_HTTPS_EXTERNAL_PORT: int = Field(env="NGINX_HTTPS_EXTERNAL_PORT")
     FRONTEND_BASE_URL: str = Field(env="FRONTEND_BASE_URL")
     API_BASE_URL: str = Field(env="API_BASE_URL")
-    
-    # External Sites
-    EXTERNAL_SITES: str = Field(env="EXTERNAL_SITES")
 
     @property
     def DATABASE_URL(self) -> str:
@@ -392,3 +389,6 @@ def get_settings() -> Settings:
 
 
 settings = get_settings()
+
+    # External Sites
+    EXTERNAL_SITES: str = Field(env="EXTERNAL_SITES")

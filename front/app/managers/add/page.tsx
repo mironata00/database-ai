@@ -10,7 +10,7 @@ export default function AddManagerPage() {
   const [error, setError] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [formData, setFormData] = useState({ email: '', password: '', confirmPassword: '', full_name: '', role: 'manager', is_active: true })
-  const API_URL = typeof window !== 'undefined' ? `http://${window.location.hostname}` : 'http://localhost'
+  const API_URL = typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.host}` : 'http://localhost'
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

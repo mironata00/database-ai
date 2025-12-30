@@ -44,7 +44,7 @@ export default function AddSupplierPage() {
   })
 
   const API_URL = typeof window !== 'undefined' 
-    ? `http://${window.location.hostname}`
+    ? `https://${window.location.hostname}`
     : 'http://localhost'
 
   const handleSubmit = async (e: React.FormEvent) => {

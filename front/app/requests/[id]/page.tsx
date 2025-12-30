@@ -14,7 +14,7 @@ export default function RequestDetailPage() {
   const [showRejectModal, setShowRejectModal] = useState(false)
 
   const API_URL = typeof window !== 'undefined'
-    ? `http://${window.location.hostname}`
+    ? `https://${window.location.hostname}`
     : 'http://localhost'
 
   useEffect(() => {

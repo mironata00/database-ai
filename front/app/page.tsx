@@ -35,7 +35,7 @@ export default function HomePage() {
   const [user, setUser] = useState<User | null>(null)
   const searchTimeoutRef = useRef<NodeJS.Timeout>()
   
-  const API_URL = typeof window !== 'undefined' ? `http://${window.location.hostname}` : 'http://localhost'
+  const API_URL = typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.host}` : 'http://localhost'
 
   useEffect(() => { checkAuth() }, [])
 

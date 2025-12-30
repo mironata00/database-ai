@@ -15,7 +15,7 @@ export default function EditManagerPage() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [formData, setFormData] = useState({ email: '', full_name: '', role: 'manager', is_active: true, created_at: '' })
-  const API_URL = typeof window !== 'undefined' ? `http://${window.location.hostname}` : 'http://localhost'
+  const API_URL = typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.host}` : 'http://localhost'
 
   useEffect(() => { fetchManager() }, [])
 

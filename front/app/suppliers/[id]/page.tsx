@@ -30,13 +30,26 @@ export default function SupplierDetailPage() {
   const [newTag, setNewTag] = useState('')
   const [showColorPicker, setShowColorPicker] = useState(false)
   const [selectedColor, setSelectedColor] = useState('#3B82F6')
+  const [userRole, setUserRole] = useState<string>('')
   const prevImportsRef = useRef<any[]>([])
 
   const API_URL = typeof window !== 'undefined'
-    ? `http://${window.location.hostname}`
+    ? `${window.location.protocol}//${window.location.host}`
     : 'http://localhost'
 
+  const isAdmin = userRole === 'admin'
+
   useEffect(() => {
+    const user = localStorage.getItem('user')
+    if (user) {
+      try {
+        const userData = JSON.parse(user)
+        setUserRole(userData.role || '')
+      } catch (e) {
+        console.error('Error parsing user data:', e)
+      }
+    }
+
     fetchSupplier()
     fetchImports()
     const interval = setInterval(fetchImports, 3000)
@@ -95,7 +108,7 @@ export default function SupplierDetailPage() {
   }
 
   const handleFileUpload = async () => {
-    if (!file) return
+    if (!file || !isAdmin) return
     setUploading(true)
     setUploadProgress(0)
 
@@ -138,7 +151,7 @@ export default function SupplierDetailPage() {
   }
 
   const deleteImport = async (importId: string) => {
-    if (!confirm('Удалить этот прайс-лист?')) return
+    if (!isAdmin || !confirm('Удалить этот прайс-лист?')) return
 
     try {
       const token = localStorage.getItem('access_token')
@@ -174,6 +187,8 @@ export default function SupplierDetailPage() {
   }
 
   const saveTags = async (newTags: string[]) => {
+    if (!isAdmin) return
+
     try {
       const token = localStorage.getItem('access_token')
       const response = await fetch(`${API_URL}/api/suppliers/${params.id}`, {
@@ -196,6 +211,8 @@ export default function SupplierDetailPage() {
   }
 
   const saveColor = async (color: string) => {
+    if (!isAdmin) return
+
     try {
       const token = localStorage.getItem('access_token')
       const response = await fetch(`${API_URL}/api/suppliers/${params.id}`, {
@@ -219,6 +236,7 @@ export default function SupplierDetailPage() {
   }
 
   const handleRatingUpdate = async () => {
+    if (!isAdmin) return
     const rating = parseFloat(newRating)
     if (isNaN(rating)) return
 
@@ -244,22 +262,22 @@ export default function SupplierDetailPage() {
   }
 
   const addTag = () => {
-    if (newTag.trim() && !tags.includes(newTag.trim())) {
-      const newTags = [...tags, newTag.trim()]
-      setTags(newTags)
-      setNewTag('')
-      saveTags(newTags)
-    }
+    if (!isAdmin || newTag.trim() === '' || tags.includes(newTag.trim())) return
+    const newTags = [...tags, newTag.trim()]
+    setTags(newTags)
+    setNewTag('')
+    saveTags(newTags)
   }
 
   const removeTag = (tagToRemove: string) => {
+    if (!isAdmin) return
     const newTags = tags.filter(t => t !== tagToRemove)
     setTags(newTags)
     saveTags(newTags)
   }
 
   const clearAllTags = () => {
-    if (!confirm('Удалить все теги?')) return
+    if (!isAdmin || !confirm('Удалить все теги?')) return
     setTags([])
     saveTags([])
   }
@@ -302,6 +320,9 @@ export default function SupplierDetailPage() {
       >
         <div className="max-w-7xl mx-auto px-4 py-4">
           <h1 className="text-xl font-semibold">{supplier.name}</h1>
+          {!isAdmin && (
+            <p className="text-sm text-gray-500 mt-1">Режим просмотра (менеджер)</p>
+          )}
         </div>
       </div>
 
@@ -387,15 +408,17 @@ export default function SupplierDetailPage() {
                     {AVAILABLE_COLORS.find(c => c.hex === selectedColor)?.name || 'Цвет'}
                   </span>
                 </div>
-                <button
-                  onClick={() => setShowColorPicker(!showColorPicker)}
-                  className="p-2 hover:bg-gray-100 rounded-lg"
-                >
-                  <Palette className="w-5 h-5" />
-                </button>
+                {isAdmin && (
+                  <button
+                    onClick={() => setShowColorPicker(!showColorPicker)}
+                    className="p-2 hover:bg-gray-100 rounded-lg"
+                  >
+                    <Palette className="w-5 h-5" />
+                  </button>
+                )}
               </div>
 
-              {showColorPicker && (
+              {isAdmin && showColorPicker && (
                 <div className="grid grid-cols-2 gap-2">
                   {AVAILABLE_COLORS.map((color) => (
                     <button
@@ -422,51 +445,57 @@ export default function SupplierDetailPage() {
                 <Star className="w-12 h-12 text-yellow-500 fill-yellow-500" />
                 <span className="text-4xl font-bold">{supplier.rating?.toFixed(1) || '0.0'}</span>
               </div>
-              <div className="flex space-x-2">
-                <input
-                  type="number"
-                  step="0.1"
-                  value={newRating}
-                  onChange={(e) => setNewRating(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleRatingUpdate()}
-                  className="flex-1 px-3 py-2 border rounded-lg"
-                />
-                <button onClick={handleRatingUpdate} className="px-4 py-2 bg-blue-500 text-white rounded-lg">
-                  OK
-                </button>
-              </div>
+              {isAdmin && (
+                <div className="flex space-x-2">
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={newRating}
+                    onChange={(e) => setNewRating(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleRatingUpdate()}
+                    className="flex-1 px-3 py-2 border rounded-lg"
+                  />
+                  <button onClick={handleRatingUpdate} className="px-4 py-2 bg-blue-500 text-white rounded-lg">
+                    OK
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="bg-white rounded-lg border p-6">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold">Теги</h2>
-                {tags.length > 0 && (
+                {isAdmin && tags.length > 0 && (
                   <button onClick={clearAllTags} className="text-xs text-red-600 hover:underline flex items-center space-x-1">
                     <Trash2 className="w-3 h-3" />
                     <span>Очистить все</span>
                   </button>
                 )}
               </div>
-              <div className="mb-3 flex space-x-2">
-                <input
-                  type="text"
-                  value={newTag}
-                  onChange={(e) => setNewTag(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && addTag()}
-                  placeholder="Добавить..."
-                  className="flex-1 px-3 py-2 border rounded-lg text-sm"
-                />
-                <button onClick={addTag} className="px-3 py-2 bg-blue-500 text-white rounded-lg">
-                  <Plus className="w-4 h-4" />
-                </button>
-              </div>
+              {isAdmin && (
+                <div className="mb-3 flex space-x-2">
+                  <input
+                    type="text"
+                    value={newTag}
+                    onChange={(e) => setNewTag(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && addTag()}
+                    placeholder="Добавить..."
+                    className="flex-1 px-3 py-2 border rounded-lg text-sm"
+                  />
+                  <button onClick={addTag} className="px-3 py-2 bg-blue-500 text-white rounded-lg">
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
               <div className="flex flex-wrap gap-2">
                 {tags.map((tag, i) => (
                   <span key={i} className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm flex items-center space-x-1 group">
                     <span>{tag}</span>
-                    <button onClick={() => removeTag(tag)} className="hover:text-red-600 opacity-0 group-hover:opacity-100">
-                      <X className="w-3 h-3" />
-                    </button>
+                    {isAdmin && (
+                      <button onClick={() => removeTag(tag)} className="hover:text-red-600 opacity-0 group-hover:opacity-100">
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
                   </span>
                 ))}
               </div>
@@ -475,34 +504,36 @@ export default function SupplierDetailPage() {
             <div className="bg-white rounded-lg border p-6">
               <h2 className="text-lg font-semibold mb-4">Прайс-листы ({imports.length})</h2>
 
-              <div className="mb-4">
-                <input
-                  type="file"
-                  id="file"
-                  onChange={(e) => setFile(e.target.files?.[0] || null)}
-                  accept=".xlsx,.xls,.csv"
-                  className="hidden"
-                />
-                <label htmlFor="file" className="cursor-pointer block border-2 border-dashed rounded p-4 text-center hover:bg-gray-50">
-                  <Upload className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-                  <div className="text-sm text-gray-600">{file ? file.name : 'Загрузить'}</div>
-                </label>
-                {file && (
-                  <div className="mt-3">
-                    {uploading && (
-                      <div className="mb-2">
-                        <div className="w-full bg-gray-200 rounded-full h-2">
-                          <div className="bg-blue-500 h-2 rounded-full transition-all" style={{width: `${uploadProgress}%`}} />
+              {isAdmin && (
+                <div className="mb-4">
+                  <input
+                    type="file"
+                    id="file"
+                    onChange={(e) => setFile(e.target.files?.[0] || null)}
+                    accept=".xlsx,.xls,.csv"
+                    className="hidden"
+                  />
+                  <label htmlFor="file" className="cursor-pointer block border-2 border-dashed rounded p-4 text-center hover:bg-gray-50">
+                    <Upload className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+                    <div className="text-sm text-gray-600">{file ? file.name : 'Загрузить'}</div>
+                  </label>
+                  {file && (
+                    <div className="mt-3">
+                      {uploading && (
+                        <div className="mb-2">
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div className="bg-blue-500 h-2 rounded-full transition-all" style={{width: `${uploadProgress}%`}} />
+                          </div>
+                          <div className="text-xs text-center mt-1 text-gray-600">{uploadProgress}%</div>
                         </div>
-                        <div className="text-xs text-center mt-1 text-gray-600">{uploadProgress}%</div>
-                      </div>
-                    )}
-                    <button onClick={handleFileUpload} disabled={uploading} className="w-full px-4 py-2 bg-blue-500 text-white rounded-lg disabled:opacity-50">
-                      {uploading ? 'Загрузка...' : 'Загрузить'}
-                    </button>
-                  </div>
-                )}
-              </div>
+                      )}
+                      <button onClick={handleFileUpload} disabled={uploading} className="w-full px-4 py-2 bg-blue-500 text-white rounded-lg disabled:opacity-50">
+                        {uploading ? 'Загрузка...' : 'Загрузить'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="space-y-2">
                 {imports.map((imp) => (
@@ -533,10 +564,12 @@ export default function SupplierDetailPage() {
                         <Download className="w-3 h-3" />
                         <span>Скачать</span>
                       </button>
-                      <button onClick={() => deleteImport(imp.id)} className="text-xs text-red-600 hover:underline flex items-center space-x-1">
-                        <Trash2 className="w-3 h-3" />
-                        <span>Удалить</span>
-                      </button>
+                      {isAdmin && (
+                        <button onClick={() => deleteImport(imp.id)} className="text-xs text-red-600 hover:underline flex items-center space-x-1">
+                          <Trash2 className="w-3 h-3" />
+                          <span>Удалить</span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}

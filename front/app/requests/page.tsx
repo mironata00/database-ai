@@ -3,19 +3,31 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import LayoutWithSidebar from '../layout-with-sidebar'
-import { CheckCircle, XCircle, Clock, Eye } from 'lucide-react'
+import { CheckCircle, XCircle, Clock } from 'lucide-react'
 
 export default function RequestsPage() {
   const router = useRouter()
   const [requests, setRequests] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<string>('all')
+  const [userRole, setUserRole] = useState<string>('')
 
   const API_URL = typeof window !== 'undefined'
-    ? `http://${window.location.hostname}`
+    ? `${window.location.protocol}//${window.location.host}`
     : 'http://localhost'
 
+  const isAdmin = userRole === 'admin'
+
   useEffect(() => {
+    const user = localStorage.getItem('user')
+    if (user) {
+      try {
+        const userData = JSON.parse(user)
+        setUserRole(userData.role || '')
+      } catch (e) {
+        console.error('Error parsing user data:', e)
+      }
+    }
     fetchRequests()
   }, [filter])
 
@@ -42,6 +54,7 @@ export default function RequestsPage() {
   }
 
   const approveRequest = async (requestId: string) => {
+    if (!isAdmin) return
     try {
       const token = localStorage.getItem('access_token')
       const response = await fetch(`${API_URL}/api/requests/${requestId}/approve`, {
@@ -58,6 +71,7 @@ export default function RequestsPage() {
   }
 
   const rejectRequest = async (requestId: string) => {
+    if (!isAdmin) return
     try {
       const token = localStorage.getItem('access_token')
       const response = await fetch(`${API_URL}/api/requests/${requestId}/reject`, {
@@ -113,6 +127,9 @@ export default function RequestsPage() {
       <div className="bg-white border-b">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <h1 className="text-xl font-semibold">Заявки на добавление поставщиков</h1>
+          {!isAdmin && (
+            <p className="text-sm text-gray-500 mt-1">Режим просмотра (менеджер)</p>
+          )}
         </div>
       </div>
 
@@ -202,7 +219,7 @@ export default function RequestsPage() {
                   </div>
                 </div>
 
-                {request.status === 'pending' && (
+                {isAdmin && request.status === 'pending' && (
                   <div className="flex items-center justify-between mt-6 pt-6 border-t">
                     <button
                       onClick={() => rejectRequest(request.id)}

@@ -1,0 +1,1083 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Регистрация поставщика | Database AI</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f172a;
+            min-height: 100vh;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(ellipse at 20% 30%, rgba(99, 102, 241, 0.15) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 70%, rgba(139, 92, 246, 0.15) 0%, transparent 50%),
+                radial-gradient(ellipse at 50% 50%, rgba(59, 130, 246, 0.1) 0%, transparent 50%);
+            animation: morphBackground 20s ease-in-out infinite;
+            z-index: 0;
+        }
+
+        @keyframes morphBackground {
+            0%, 100% { transform: scale(1) translate(0, 0); }
+            33% { transform: scale(1.1) translate(-5%, 5%); }
+            66% { transform: scale(0.95) translate(5%, -5%); }
+        }
+
+        .container {
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 48px;
+            animation: fadeInDown 0.6s ease-out;
+        }
+
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .logo {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 64px;
+            height: 64px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 16px;
+            margin-bottom: 20px;
+            font-size: 28px;
+            font-weight: 700;
+            color: white;
+            box-shadow: 0 8px 32px rgba(102, 126, 234, 0.4);
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            color: white;
+            margin-bottom: 12px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            color: #94a3b8;
+            font-weight: 400;
+        }
+
+        .form-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 24px;
+            padding: 48px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            animation: fadeInUp 0.6s ease-out 0.2s both;
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .form-card {
+                padding: 32px 24px;
+            }
+            .header h1 {
+                font-size: 2rem;
+            }
+        }
+
+        .section {
+            margin-bottom: 40px;
+        }
+
+        .section-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: white;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .section-title svg {
+            width: 24px;
+            height: 24px;
+            color: #667eea;
+        }
+
+        .section-description {
+            font-size: 0.9rem;
+            color: #94a3b8;
+            margin-bottom: 20px;
+            line-height: 1.6;
+        }
+
+        .form-group {
+            margin-bottom: 24px;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 768px) {
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        label {
+            display: block;
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: #e2e8f0;
+            margin-bottom: 8px;
+        }
+
+        label .required {
+            color: #f87171;
+        }
+
+        input[type="text"],
+        input[type="email"],
+        input[type="tel"],
+        input[type="number"],
+        textarea {
+            width: 100%;
+            padding: 12px 16px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            font-size: 0.95rem;
+            color: white;
+            transition: all 0.3s ease;
+            font-family: inherit;
+        }
+
+        input::placeholder,
+        textarea::placeholder {
+            color: #64748b;
+        }
+
+        input:focus,
+        textarea:focus {
+            outline: none;
+            background: rgba(255, 255, 255, 0.08);
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 120px;
+            line-height: 1.6;
+        }
+
+        .file-upload-zone {
+            border: 2px dashed rgba(255, 255, 255, 0.2);
+            border-radius: 16px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .file-upload-zone:hover {
+            border-color: #667eea;
+            background: rgba(102, 126, 234, 0.05);
+        }
+
+        .file-upload-zone.dragging {
+            border-color: #667eea;
+            background: rgba(102, 126, 234, 0.1);
+            transform: scale(1.02);
+        }
+
+        .file-upload-zone svg {
+            width: 48px;
+            height: 48px;
+            margin: 0 auto 16px;
+            color: #667eea;
+        }
+
+        .file-upload-zone input[type="file"] {
+            display: none;
+        }
+
+        .upload-text {
+            color: #e2e8f0;
+            font-size: 1rem;
+            margin-bottom: 8px;
+        }
+
+        .upload-hint {
+            color: #64748b;
+            font-size: 0.85rem;
+        }
+
+        .file-list {
+            margin-top: 20px;
+        }
+
+        .file-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            background: rgba(102, 126, 234, 0.1);
+            border: 1px solid rgba(102, 126, 234, 0.3);
+            border-radius: 12px;
+            margin-bottom: 12px;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .file-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex: 1;
+        }
+
+        .file-icon {
+            width: 36px;
+            height: 36px;
+            background: #667eea;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .file-details {
+            flex: 1;
+        }
+
+        .file-name {
+            color: white;
+            font-size: 0.9rem;
+            font-weight: 500;
+            margin-bottom: 4px;
+        }
+
+        .file-size {
+            color: #94a3b8;
+            font-size: 0.8rem;
+        }
+
+        .file-remove {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #f87171;
+            border-radius: 8px;
+            padding: 6px 12px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+        }
+
+        .file-remove:hover {
+            background: rgba(239, 68, 68, 0.2);
+        }
+
+        .progress-bar-container {
+            margin-top: 12px;
+            display: none;
+        }
+
+        .progress-bar-container.active {
+            display: block;
+        }
+
+        .progress-label {
+            color: #94a3b8;
+            font-size: 0.85rem;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            transition: width 0.3s ease;
+            border-radius: 4px;
+            width: 0;
+        }
+
+        .color-picker {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 12px;
+        }
+
+        .color-option {
+            display: flex;
+            align-items: center;
+            padding: 14px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .color-option:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+        }
+
+        .color-option.selected {
+            border-color: #667eea;
+            background: rgba(102, 126, 234, 0.1);
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+        }
+
+        .color-preview {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            margin-right: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .color-label {
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: #e2e8f0;
+        }
+
+        .btn-group {
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            margin-top: 40px;
+        }
+
+        button {
+            padding: 14px 32px;
+            border: none;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: inherit;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            box-shadow: 0 8px 24px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 32px rgba(102, 126, 234, 0.5);
+        }
+
+        .btn-primary:disabled {
+            background: rgba(255, 255, 255, 0.1);
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+            margin-right: 8px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .success-page {
+            display: none;
+            text-align: center;
+            animation: fadeInUp 0.6s ease-out;
+        }
+
+        .success-page.show {
+            display: block;
+        }
+
+        .success-icon {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 24px;
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 12px 40px rgba(16, 185, 129, 0.4);
+            animation: scaleIn 0.5s ease-out 0.2s both;
+        }
+
+        @keyframes scaleIn {
+            from {
+                transform: scale(0);
+                opacity: 0;
+            }
+            to {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        .success-icon svg {
+            width: 48px;
+            height: 48px;
+            color: white;
+        }
+
+        .success-page h2 {
+            font-size: 2rem;
+            color: white;
+            margin-bottom: 16px;
+            font-weight: 700;
+        }
+
+        .success-page p {
+            font-size: 1.1rem;
+            color: #94a3b8;
+            margin-bottom: 12px;
+            line-height: 1.6;
+        }
+
+        .contact-methods {
+            display: flex;
+            justify-content: center;
+            gap: 16px;
+            margin-top: 32px;
+            flex-wrap: wrap;
+        }
+
+        .contact-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 20px;
+            background: rgba(102, 126, 234, 0.1);
+            border: 1px solid rgba(102, 126, 234, 0.3);
+            border-radius: 12px;
+            color: #a5b4fc;
+            font-size: 0.9rem;
+        }
+
+        .contact-badge svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        .footer {
+            text-align: center;
+            color: #64748b;
+            margin-top: 48px;
+            padding-top: 32px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            font-size: 0.9rem;
+        }
+
+        .alert {
+            padding: 16px 20px;
+            border-radius: 12px;
+            margin-bottom: 24px;
+            display: none;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .alert.show {
+            display: flex;
+            animation: slideDown 0.3s ease-out;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .alert-error {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #fca5a5;
+        }
+
+        .alert svg {
+            width: 20px;
+            height: 20px;
+            flex-shrink: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">DB</div>
+            <h1>Регистрация поставщика</h1>
+            <p>Заполните форму, чтобы стать нашим партнёром</p>
+        </div>
+
+        <div class="form-card">
+            <div id="alertError" class="alert alert-error">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <span id="errorMessage">Ошибка отправки заявки</span>
+            </div>
+
+            <form id="supplierForm">
+                
+
+                <div class="section">
+                    <h2 class="section-title">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path>
+                        </svg>
+                        Основная информация
+                    </h2>
+                    <div class="form-group">
+                        <label>Название компании <span class="required">*</span></label>
+                        <input type="text" name="name" placeholder="ООО «Торговый Дом Электрика»" required>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>ИНН <span class="required">*</span></label>
+                            <input type="text" name="inn" pattern="[0-9]{10,12}" maxlength="12" placeholder="7707123456" required>
+                        </div>
+                        <div class="form-group">
+                            <label>КПП</label>
+                            <input type="text" name="kpp" pattern="[0-9]{9}" maxlength="9" placeholder="770701001">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>ОГРН</label>
+                            <input type="text" name="ogrn" pattern="[0-9]{13,15}" maxlength="15" placeholder="1027700123456">
+                        </div>
+                        <div class="form-group">
+                            <label>Email компании</label>
+                            <input type="email" name="email" placeholder="info@company.ru">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Телефон компании</label>
+                            <input type="tel" name="phone" placeholder="+7 (495) 123-45-67">
+                        </div>
+                        <div class="form-group">
+                            <label>Сайт</label>
+                            <input type="text" name="website" placeholder="www.company.ru">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h2 class="section-title">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                        </svg>
+                        Адреса
+                    </h2>
+                    <div class="form-group">
+                        <label>Юридический адрес</label>
+                        <input type="text" name="legal_address" placeholder="123456, г. Москва, ул. Ленина, д. 1, офис 100">
+                    </div>
+                    <div class="form-group">
+                        <label>Фактический адрес</label>
+                        <input type="text" name="actual_address" placeholder="123456, г. Москва, ул. Пушкина, д. 10, склад 5">
+                    </div>
+                    <div class="form-group">
+                        <label>Регионы доставки</label>
+                        <input type="text" name="delivery_regions" placeholder="Москва, Московская область, Санкт-Петербург">
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h2 class="section-title">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+                        </svg>
+                        Контактное лицо
+                    </h2>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>ФИО</label>
+                            <input type="text" name="contact_person" placeholder="Иванов Иван Иванович">
+                        </div>
+                        <div class="form-group">
+                            <label>Должность</label>
+                            <input type="text" name="contact_position" placeholder="Менеджер по продажам">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Телефон <span class="required">*</span></label>
+                            <input type="tel" name="contact_phone" placeholder="+7 (999) 123-45-67" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Email <span class="required">*</span></label>
+                            <input type="email" name="contact_email" placeholder="manager@company.ru" required>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Telegram (для быстрой связи)</label>
+                        <input type="text" name="contact_telegram" placeholder="@ivanov_manager">
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h2 class="section-title">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                        </svg>
+                        Условия работы
+                    </h2>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Условия оплаты</label>
+                            <input type="text" name="payment_terms" placeholder="Постоплата 14 дней, предоплата 50%">
+                        </div>
+                        <div class="form-group">
+                            <label>Минимальная сумма заказа (₽)</label>
+                            <input type="number" name="min_order_sum" step="0.01" min="0" placeholder="50000">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h2 class="section-title">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+                        </svg>
+                        Прайс-листы
+                    </h2>
+                    <p class="section-description">Загрузите один или несколько прайс-листов (Excel, CSV, PDF)</p>
+                    <div class="file-upload-zone" id="fileUpload">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                        </svg>
+                        <div class="upload-text">
+                            <strong>Нажмите для выбора файлов</strong> или перетащите их сюда
+                        </div>
+                        <div class="upload-hint">Excel, CSV, PDF • Максимум 100 МБ на файл</div>
+                        <input type="file" id="pricelistFile" accept=".xlsx,.xls,.csv,.pdf" multiple>
+                    </div>
+                    <div class="file-list" id="fileList"></div>
+                    
+                    <div class="progress-bar-container" id="uploadProgress">
+                        <div class="progress-label">
+                            <span>Загрузка файлов...</span>
+                            <span id="uploadPercent">0%</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="uploadProgressBar"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="progress-bar-container" id="sendProgress">
+                        <div class="progress-label">
+                            <span>Отправка на сервер...</span>
+                            <span id="sendPercent">0%</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="sendProgressBar"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h2 class="section-title">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                        </svg>
+                        Примечания
+                    </h2>
+                    <div class="form-group">
+                        <textarea name="notes" placeholder="Дополнительная информация: специализация, преимущества, особые условия сотрудничества..."></textarea>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h2 class="section-title">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"></path>
+                        </svg>
+                        Цветовая категория
+                    </h2>
+                    <p class="section-description">Выберите цвет для визуальной категоризации вашей компании в системе</p>
+                    <div class="color-picker">
+                        <div class="color-option selected" data-color="#3B82F6">
+                            <div class="color-preview" style="background-color: #3B82F6;"></div>
+                            <span class="color-label">Синий (Вода)</span>
+                        </div>
+                        <div class="color-option" data-color="#EAB308">
+                            <div class="color-preview" style="background-color: #EAB308;"></div>
+                            <span class="color-label">Желтый (Электрика)</span>
+                        </div>
+                        <div class="color-option" data-color="#92400E">
+                            <div class="color-preview" style="background-color: #92400E;"></div>
+                            <span class="color-label">Коричневый (Дерево)</span>
+                        </div>
+                        <div class="color-option" data-color="#9333EA">
+                            <div class="color-preview" style="background-color: #9333EA;"></div>
+                            <span class="color-label">Фиолетовый (Химия)</span>
+                        </div>
+                        <div class="color-option" data-color="#6B7280">
+                            <div class="color-preview" style="background-color: #6B7280;"></div>
+                            <span class="color-label">Серый (Разное)</span>
+                        </div>
+                        <div class="color-option" data-color="#EF4444">
+                            <div class="color-preview" style="background-color: #EF4444;"></div>
+                            <span class="color-label">Красный</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="btn-group">
+                    <button type="submit" class="btn-primary" id="submitBtn">
+                        Отправить заявку
+                    </button>
+                </div>
+            </form>
+
+            <div class="success-page" id="successPage">
+                <div class="success-icon">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path>
+                    </svg>
+                </div>
+                <h2>Заявка успешно отправлена!</h2>
+                <p>Спасибо за интерес к сотрудничеству с Database AI.</p>
+                <p>Ваша заявка будет рассмотрена в ближайшее время.</p>
+                <p style="margin-top: 24px;">Вы получите уведомление о решении:</p>
+                <div class="contact-methods">
+                    <div class="contact-badge">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                        </svg>
+                        <span id="notifyEmail">На email</span>
+                    </div>
+                    <div class="contact-badge" id="notifyTelegram" style="display: none;">
+                        <svg fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z"></path>
+                        </svg>
+                        <span>В Telegram</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>© 2024 Database AI. Все права защищены.</p>
+        </div>
+    </div>
+
+    <script>
+        // ВАЖНО: Замените на ваш реальный URL API
+        const API_URL = 'http://42b79e5f4529.vps.myjino.ru:49351/api/supplier-requests';
+
+        let selectedColor = '#3B82F6';
+        let selectedFiles = [];
+
+        document.querySelectorAll('.color-option').forEach(option => {
+            option.addEventListener('click', () => {
+                document.querySelectorAll('.color-option').forEach(o => o.classList.remove('selected'));
+                option.classList.add('selected');
+                selectedColor = option.dataset.color;
+            });
+        });
+
+        const fileUpload = document.getElementById('fileUpload');
+        const fileInput = document.getElementById('pricelistFile');
+        const fileList = document.getElementById('fileList');
+
+        fileUpload.addEventListener('click', () => fileInput.click());
+
+        fileUpload.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            fileUpload.classList.add('dragging');
+        });
+
+        fileUpload.addEventListener('dragleave', () => {
+            fileUpload.classList.remove('dragging');
+        });
+
+        fileUpload.addEventListener('drop', (e) => {
+            e.preventDefault();
+            fileUpload.classList.remove('dragging');
+            if (e.dataTransfer.files.length) {
+                handleFiles(e.dataTransfer.files);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length) {
+                handleFiles(e.target.files);
+            }
+        });
+
+        function handleFiles(files) {
+            const uploadProgress = document.getElementById('uploadProgress');
+            const uploadProgressBar = document.getElementById('uploadProgressBar');
+            const uploadPercent = document.getElementById('uploadPercent');
+            
+            uploadProgress.classList.add('active');
+            
+            let progress = 0;
+            const interval = setInterval(() => {
+                progress += 10;
+                uploadProgressBar.style.width = progress + '%';
+                uploadPercent.textContent = progress + '%';
+                
+                if (progress >= 100) {
+                    clearInterval(interval);
+                    setTimeout(() => {
+                        uploadProgress.classList.remove('active');
+                        addFilesToList(files);
+                    }, 300);
+                }
+            }, 100);
+        }
+
+        function addFilesToList(files) {
+            Array.from(files).forEach(file => {
+                if (selectedFiles.find(f => f.name === file.name)) return;
+                selectedFiles.push(file);
+            });
+            renderFileList();
+        }
+
+        window.removeFile = function(fileName) {
+            selectedFiles = selectedFiles.filter(f => f.name !== fileName);
+            renderFileList();
+        }
+
+        function renderFileList() {
+            fileList.innerHTML = '';
+            selectedFiles.forEach(file => {
+                const fileItem = document.createElement('div');
+                fileItem.className = 'file-item';
+                fileItem.innerHTML = `
+                    <div class="file-info">
+                        <div class="file-icon">${getFileExtension(file.name)}</div>
+                        <div class="file-details">
+                            <div class="file-name">${file.name}</div>
+                            <div class="file-size">${formatFileSize(file.size)}</div>
+                        </div>
+                    </div>
+                    <button type="button" class="file-remove" onclick="removeFile('${file.name}')">Удалить</button>
+                `;
+                fileList.appendChild(fileItem);
+            });
+        }
+
+        function getFileExtension(filename) {
+            const ext = filename.split('.').pop().toUpperCase();
+            return ext.substring(0, 4);
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+        }
+
+        function showAlert(message) {
+            const errorAlert = document.getElementById('alertError');
+            document.getElementById('errorMessage').textContent = message;
+            errorAlert.classList.add('show');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            
+            setTimeout(() => {
+                errorAlert.classList.remove('show');
+            }, 5000);
+        }
+
+        function showSuccess(email, telegram) {
+            document.getElementById('supplierForm').style.display = 'none';
+            const successPage = document.getElementById('successPage');
+            successPage.classList.add('show');
+            
+            document.getElementById('notifyEmail').textContent = email;
+            if (telegram) {
+                document.getElementById('notifyTelegram').style.display = 'flex';
+            }
+            
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        document.getElementById('supplierForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const submitBtn = document.getElementById('submitBtn');
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="loading"></span>Отправка...';
+
+            const sendProgress = document.getElementById('sendProgress');
+            const sendProgressBar = document.getElementById('sendProgressBar');
+            const sendPercent = document.getElementById('sendPercent');
+            
+            sendProgress.classList.add('active');
+
+            try {
+                const formData = new FormData();
+                
+                const supplierData = {
+                    name: e.target.name.value,
+                    inn: e.target.inn.value,
+                    color: selectedColor,
+                };
+
+                if (e.target.kpp.value) supplierData.kpp = e.target.kpp.value;
+                if (e.target.ogrn.value) supplierData.ogrn = e.target.ogrn.value;
+                if (e.target.email.value) supplierData.email = e.target.email.value;
+                if (e.target.phone.value) supplierData.phone = e.target.phone.value;
+                if (e.target.website.value) supplierData.website = e.target.website.value;
+                if (e.target.legal_address.value) supplierData.legal_address = e.target.legal_address.value;
+                if (e.target.actual_address.value) supplierData.actual_address = e.target.actual_address.value;
+                if (e.target.contact_person.value) supplierData.contact_person = e.target.contact_person.value;
+                if (e.target.contact_position.value) supplierData.contact_position = e.target.contact_position.value;
+                if (e.target.contact_phone.value) supplierData.contact_phone = e.target.contact_phone.value;
+                if (e.target.contact_email.value) supplierData.contact_email = e.target.contact_email.value;
+                if (e.target.payment_terms.value) supplierData.payment_terms = e.target.payment_terms.value;
+                if (e.target.min_order_sum.value) supplierData.min_order_sum = parseFloat(e.target.min_order_sum.value);
+                if (e.target.delivery_regions.value) {
+                    supplierData.delivery_regions = e.target.delivery_regions.value.split(',').map(r => r.trim());
+                }
+
+                formData.append('data', JSON.stringify(supplierData));
+                
+                if (e.target.contact_email.value) formData.append('contact_email', e.target.contact_email.value);
+                if (e.target.contact_phone.value) formData.append('contact_phone', e.target.contact_phone.value);
+                if (e.target.contact_telegram.value) formData.append('contact_telegram', e.target.contact_telegram.value);
+                if (e.target.notes.value) formData.append('notes', e.target.notes.value);
+                
+                selectedFiles.forEach(file => {
+                    formData.append('pricelist', file);
+                });
+
+                let progress = 0;
+                const progressInterval = setInterval(() => {
+                    progress += 5;
+                    if (progress <= 90) {
+                        sendProgressBar.style.width = progress + '%';
+                        sendPercent.textContent = progress + '%';
+                    }
+                }, 200);
+
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                clearInterval(progressInterval);
+                sendProgressBar.style.width = '100%';
+                sendPercent.textContent = '100%';
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Ошибка отправки заявки');
+                }
+
+                setTimeout(() => {
+                    sendProgress.classList.remove('active');
+                    showSuccess(
+                        e.target.contact_email.value,
+                        e.target.contact_telegram.value
+                    );
+                }, 500);
+
+            } catch (error) {
+                sendProgress.classList.remove('active');
+                showAlert(error.message);
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = 'Отправить заявку';
+            }
+        });
+    </script>
+</body>
+</html>
