@@ -11,37 +11,19 @@ logger = logging.getLogger(__name__)
 class EmailSender:
     def __init__(self):
         self.accounts = settings.EMAIL_SMTP_ACCOUNTS
-        self.current_account_index = 0
-        self.emails_sent_per_account = {}
     
-    def get_next_account(self):
+    def get_account_by_index(self, index: int):
+        """Получить аккаунт по индексу с ротацией"""
         if not self.accounts:
             raise Exception("No SMTP accounts configured")
-        
-        if not settings.PRICE_REQUEST_USE_CAROUSEL:
-            return self.accounts[0]
-        
-        max_per_account = settings.PRICE_REQUEST_EMAILS_PER_ACCOUNT
-        attempts = 0
-        
-        while attempts < len(self.accounts):
-            account = self.accounts[self.current_account_index % len(self.accounts)]
-            account_id = account['id']
-            sent_count = self.emails_sent_per_account.get(account_id, 0)
-            
-            if sent_count < max_per_account:
-                return account
-            
-            self.current_account_index += 1
-            attempts += 1
-        
-        logger.warning("All accounts reached limit, resetting counters")
-        self.emails_sent_per_account = {}
-        self.current_account_index = 0
-        return self.accounts[0]
+        return self.accounts[index % len(self.accounts)]
     
-    def send_email(self, to_emails: List[str], subject: str, body: str, reply_to: str = None) -> dict:
-        account = self.get_next_account()
+    def send_email(self, to_emails: List[str], subject: str, body: str, reply_to: str = None, account_index: int = 0) -> dict:
+        """
+        Отправка email с указанного аккаунта
+        account_index - индекс аккаунта для отправки
+        """
+        account = self.get_account_by_index(account_index)
         
         try:
             msg = MIMEMultipart('alternative')
@@ -66,33 +48,20 @@ class EmailSender:
             server.send_message(msg)
             server.quit()
             
-            account_id = account['id']
-            self.emails_sent_per_account[account_id] = self.emails_sent_per_account.get(account_id, 0) + 1
-            
-            logger.info(f"Email sent to {to_emails} via account {account_id}")
+            logger.info(f"Email sent to {to_emails} via account {account['id']} ({account['from_email']})")
             
             if settings.PRICE_REQUEST_DELAY_BETWEEN_EMAILS > 0:
                 time.sleep(settings.PRICE_REQUEST_DELAY_BETWEEN_EMAILS)
             
-            if settings.PRICE_REQUEST_USE_CAROUSEL:
-                if self.emails_sent_per_account[account_id] >= settings.PRICE_REQUEST_EMAILS_PER_ACCOUNT:
-                    self.current_account_index += 1
-            
             return {
                 "success": True,
-                "account_id": account_id,
+                "account_id": account['id'],
                 "account_email": account['from_email'],
-                "recipients": to_emails,
-                "sent_count": self.emails_sent_per_account[account_id]
+                "recipients": to_emails
             }
             
         except Exception as e:
             logger.error(f"Failed to send email via account {account['id']}: {str(e)}")
-            
-            if settings.PRICE_REQUEST_USE_CAROUSEL and len(self.accounts) > 1:
-                self.current_account_index += 1
-                return self.send_email(to_emails, subject, body, reply_to)
-            
             raise Exception(f"Failed to send email: {str(e)}")
 
 email_sender = EmailSender()
