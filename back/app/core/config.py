@@ -294,9 +294,18 @@ class Settings(BaseSettings):
     NGINX_HTTPS_EXTERNAL_PORT: int = Field(env="NGINX_HTTPS_EXTERNAL_PORT")
     FRONTEND_BASE_URL: str = Field(env="FRONTEND_BASE_URL")
     API_BASE_URL: str = Field(env="API_BASE_URL")
-    
+
     # External Sites
     EXTERNAL_SITES: str = Field(env="EXTERNAL_SITES")
+
+    # Price Request Settings
+    PRICE_REQUEST_DEFAULT_SUBJECT: str = Field(env="PRICE_REQUEST_DEFAULT_SUBJECT")
+    PRICE_REQUEST_DEFAULT_HEADER: str = Field(env="PRICE_REQUEST_DEFAULT_HEADER")
+    PRICE_REQUEST_DEFAULT_FOOTER: str = Field(env="PRICE_REQUEST_DEFAULT_FOOTER")
+    PRICE_REQUEST_USE_CAROUSEL: bool = Field(env="PRICE_REQUEST_USE_CAROUSEL")
+    PRICE_REQUEST_EMAILS_PER_ACCOUNT: int = Field(env="PRICE_REQUEST_EMAILS_PER_ACCOUNT")
+    PRICE_REQUEST_DELAY_BETWEEN_EMAILS: int = Field(env="PRICE_REQUEST_DELAY_BETWEEN_EMAILS")
+    PRICE_REQUEST_REPLY_TO_EMAIL: str = Field(env="PRICE_REQUEST_REPLY_TO_EMAIL")
 
     @property
     def DATABASE_URL(self) -> str:
@@ -348,7 +357,7 @@ class Settings(BaseSettings):
         }
 
     @property
-    def SMTP_ACCOUNTS(self) -> List[dict]:
+    def EMAIL_SMTP_ACCOUNTS(self) -> List[dict]:
         accounts = []
         for i in range(1, 6):
             host = getattr(self, f"EMAIL_SMTP_{i}_HOST", None)

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import LayoutWithSidebar from './layout-with-sidebar'
-import { Search, Loader2 } from 'lucide-react'
+import { Search, Loader2, Mail, X, Check } from 'lucide-react'
 
 interface Supplier {
   id: string
@@ -17,6 +17,11 @@ interface Supplier {
   color: string
 }
 
+interface ProductItem {
+  name: string
+  sku: string | null
+}
+
 export default function HomePage() {
   const router = useRouter()
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
@@ -26,6 +31,16 @@ export default function HomePage() {
   const [searching, setSearching] = useState(false)
   const searchTimeoutRef = useRef<NodeJS.Timeout>()
   
+  // Modal state
+  const [showModal, setShowModal] = useState(false)
+  const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set())
+  const [availableProducts, setAvailableProducts] = useState<ProductItem[]>([])
+  const [selectedSuppliers, setSelectedSuppliers] = useState<string[]>([])
+  const [emailSubject, setEmailSubject] = useState('')
+  const [emailBody, setEmailBody] = useState('')
+  const [sending, setSending] = useState(false)
+  const [sendProgress, setSendProgress] = useState(0)
+  
   const API_URL = typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.host}` : 'http://localhost'
 
   useEffect(() => { checkAuth() }, [])
@@ -34,6 +49,7 @@ export default function HomePage() {
     const token = localStorage.getItem('access_token')
     if (!token) { router.push('/login'); return }
     fetchSuppliers()
+    fetchDefaults()
   }
 
   const fetchSuppliers = async () => {
@@ -53,6 +69,22 @@ export default function HomePage() {
       console.error('Error:', error) 
     } finally { 
       setLoading(false) 
+    }
+  }
+
+  const fetchDefaults = async () => {
+    try {
+      const token = localStorage.getItem('access_token')
+      const response = await fetch(`${API_URL}/api/price-requests/defaults`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setEmailSubject(data.subject)
+        setEmailBody(data.body)
+      }
+    } catch (error) {
+      console.error('Error fetching defaults:', error)
     }
   }
 
@@ -101,6 +133,121 @@ export default function HomePage() {
     router.push(`/suppliers/${supplierId}`) 
   }
 
+  const openPriceRequestModal = () => {
+    // Собираем уникальные товары из результатов поиска
+    const products: ProductItem[] = []
+    const seen = new Set<string>()
+    
+    searchResults.forEach(result => {
+      if (result.example_products) {
+        result.example_products.forEach((p: any) => {
+          const key = `${p.name}_${p.sku || ''}`
+          if (!seen.has(key) && products.length < 20) {
+            seen.add(key)
+            products.push({ name: p.name, sku: p.sku })
+          }
+        })
+      }
+    })
+    
+    setAvailableProducts(products)
+    
+    // Автоматически выбираем все найденные товары
+    const productKeys = new Set(products.map(p => `${p.name}_${p.sku || ''}`))
+    setSelectedProducts(productKeys)
+    
+    // Автоматически выбираем всех поставщиков с email
+    const supplierIds = suppliers
+      .filter(s => s.email && s.status === 'ACTIVE' && !s.is_blacklisted)
+      .sort((a, b) => (b.rating || 0) - (a.rating || 0))
+      .map(s => s.id)
+    
+    setSelectedSuppliers(supplierIds)
+    setShowModal(true)
+  }
+
+  const toggleProduct = (product: ProductItem) => {
+    const key = `${product.name}_${product.sku || ''}`
+    setSelectedProducts(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(key)) {
+        newSet.delete(key)
+      } else {
+        newSet.add(key)
+      }
+      return newSet
+    })
+  }
+
+  const toggleSupplier = (supplierId: string) => {
+    setSelectedSuppliers(prev => 
+      prev.includes(supplierId) 
+        ? prev.filter(id => id !== supplierId)
+        : [...prev, supplierId]
+    )
+  }
+
+  const sendPriceRequests = async () => {
+    const productsToSend = availableProducts.filter(p => 
+      selectedProducts.has(`${p.name}_${p.sku || ''}`)
+    )
+    
+    if (productsToSend.length === 0) {
+      alert('Выберите хотя бы один товар')
+      return
+    }
+    
+    if (selectedSuppliers.length === 0) {
+      alert('Выберите хотя бы одного поставщика')
+      return
+    }
+
+    setSending(true)
+    setSendProgress(0)
+
+    try {
+      const token = localStorage.getItem('access_token')
+      
+      const progressInterval = setInterval(() => {
+        setSendProgress(prev => Math.min(prev + 10, 90))
+      }, 200)
+
+      const response = await fetch(`${API_URL}/api/price-requests/send`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          products: productsToSend,
+          supplier_ids: selectedSuppliers,
+          subject: emailSubject,
+          body: emailBody
+        })
+      })
+
+      clearInterval(progressInterval)
+      setSendProgress(100)
+
+      if (response.ok) {
+        const data = await response.json()
+        setTimeout(() => {
+          setShowModal(false)
+          setSending(false)
+          setSendProgress(0)
+          alert(`Запросы отправлены: ${data.sent_count} успешно, ${data.failed_count} ошибок`)
+        }, 500)
+      } else {
+        throw new Error('Ошибка отправки')
+      }
+    } catch (error) {
+      console.error('Error:', error)
+      alert('Ошибка при отправке запросов')
+      setSending(false)
+      setSendProgress(0)
+    }
+  }
+
   const displayedSuppliers = searchQuery.length >= 2 
     ? searchResults.map(result => ({
         id: result.supplier_id,
@@ -118,6 +265,10 @@ export default function HomePage() {
         }
       }))
     : suppliers
+
+  const availableSuppliers = suppliers
+    .filter(s => s.email && s.status === 'ACTIVE' && !s.is_blacklisted)
+    .sort((a, b) => (b.rating || 0) - (a.rating || 0))
 
   return (
     <LayoutWithSidebar>
@@ -143,11 +294,24 @@ export default function HomePage() {
               Добавить поставщика
             </button>
           </div>
-          {searchQuery.length >= 2 && (
-            <div className="mt-2 text-sm text-gray-600">
-              {searching ? 'Поиск...' : `Найдено: ${searchResults.length}`}
-            </div>
-          )}
+          
+          <div className="flex items-center justify-between mt-2">
+            {searchQuery.length >= 2 && (
+              <div className="text-sm text-gray-600">
+                {searching ? 'Поиск...' : `Найдено: ${searchResults.length}`}
+              </div>
+            )}
+            
+            {searchQuery.length >= 2 && searchResults.length > 0 && (
+              <button
+                onClick={openPriceRequestModal}
+                className="flex items-center space-x-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600"
+              >
+                <Mail className="w-4 h-4" />
+                <span>Отправить запрос цен</span>
+              </button>
+            )}
+          </div>
         </header>
 
         <div className="p-8">
@@ -222,6 +386,158 @@ export default function HomePage() {
             </div>
           )}
         </div>
+
+        {/* Modal */}
+        {showModal && (
+          <div 
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+            onClick={(e) => {
+              if (e.target === e.currentTarget && !sending) setShowModal(false)
+            }}
+          >
+            <div className="bg-white rounded-lg max-w-6xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="sticky top-0 bg-white border-b p-4 flex items-center justify-between z-10">
+                <h2 className="text-xl font-bold">Отправка запроса цен</h2>
+                <button 
+                  onClick={() => !sending && setShowModal(false)}
+                  className="p-2 hover:bg-gray-100 rounded-lg"
+                  disabled={sending}
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-6">
+                {/* Товары */}
+                <div>
+                  <h3 className="font-semibold mb-3">Найденные товары ({availableProducts.length})</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-60 overflow-y-auto">
+                    {availableProducts.map((product, idx) => {
+                      const key = `${product.name}_${product.sku || ''}`
+                      const isSelected = selectedProducts.has(key)
+                      return (
+                        <div 
+                          key={idx}
+                          onClick={() => toggleProduct(product)}
+                          className={`flex items-start space-x-2 p-3 rounded cursor-pointer border-2 transition ${
+                            isSelected 
+                              ? 'bg-green-50 border-green-500' 
+                              : 'bg-gray-50 border-gray-200 hover:border-gray-300'
+                          }`}
+                        >
+                          <div className="flex-shrink-0 mt-0.5">
+                            {isSelected ? (
+                              <Check className="w-5 h-5 text-green-600" />
+                            ) : (
+                              <div className="w-5 h-5 border-2 border-gray-300 rounded" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium truncate">{product.name}</div>
+                            {product.sku && (
+                              <div className="text-xs text-gray-500 font-mono">{product.sku}</div>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* Тема и тело письма */}
+                <div>
+                  <label className="block text-sm font-medium mb-1">Тема письма</label>
+                  <input
+                    type="text"
+                    value={emailSubject}
+                    onChange={(e) => setEmailSubject(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg"
+                    disabled={sending}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-1">Текст письма</label>
+                  <textarea
+                    value={emailBody}
+                    onChange={(e) => setEmailBody(e.target.value)}
+                    rows={4}
+                    className="w-full px-3 py-2 border rounded-lg resize-none"
+                    disabled={sending}
+                  />
+                </div>
+
+                {/* Поставщики */}
+                <div>
+                  <h3 className="font-semibold mb-3">Поставщики (по рейтингу) - {availableSuppliers.length} доступно</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-80 overflow-y-auto">
+                    {availableSuppliers.map(supplier => (
+                      <div
+                        key={supplier.id}
+                        onClick={() => toggleSupplier(supplier.id)}
+                        className={`flex items-center space-x-2 p-3 rounded-lg border-2 cursor-pointer transition overflow-hidden ${
+                          selectedSuppliers.includes(supplier.id)
+                            ? 'border-green-500 bg-green-50'
+                            : 'border-gray-200 hover:border-gray-300'
+                        }`}
+                        style={{ borderLeft: `4px solid ${supplier.color}` }}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-sm truncate">{supplier.name}</div>
+                          <div className="text-xs text-gray-500 truncate">{supplier.email}</div>
+                        </div>
+                        <div className="flex items-center space-x-1 flex-shrink-0">
+                          <span className="text-yellow-500 text-sm">★</span>
+                          <span className="text-xs font-medium">{supplier.rating?.toFixed(1) || '0.0'}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Прогресс бар */}
+                {sending && (
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm text-gray-600">
+                      <span>Отправка...</span>
+                      <span>{sendProgress}%</span>
+                    </div>
+                    <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-green-500 transition-all duration-300"
+                        style={{ width: `${sendProgress}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Кнопка отправки */}
+                <div className="flex justify-end space-x-3">
+                  <div className="text-sm text-gray-600">
+                    Выбрано: {selectedProducts.size} товаров, {selectedSuppliers.length} поставщиков
+                  </div>
+                  <button
+                    onClick={sendPriceRequests}
+                    disabled={sending || selectedProducts.size === 0 || selectedSuppliers.length === 0}
+                    className="px-6 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center space-x-2"
+                  >
+                    {sending ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Отправка...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Mail className="w-4 h-4" />
+                        <span>Отправить ({selectedSuppliers.length})</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </LayoutWithSidebar>
   )

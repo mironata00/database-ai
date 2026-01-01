@@ -9,6 +9,7 @@ from app.core.config import settings
 from app.core.database import db_manager
 from app.core.elasticsearch import es_manager
 from app.api import auth, suppliers, search, admin, campaigns, managers, supplier_requests
+from app.api import price_requests
 from app.middleware.audit import AuditMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
 
@@ -87,6 +88,7 @@ app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
 app.include_router(campaigns.router, prefix="/api/campaigns", tags=["Email Campaigns"])
 app.include_router(managers.router, prefix="/api/managers", tags=["Managers"])
 app.include_router(supplier_requests.router, prefix="/api/supplier-requests", tags=["Supplier Requests"])  # НОВОЕ
+app.include_router(price_requests.router, prefix="/api/price-requests", tags=["Price Requests"])
 
 @app.get("/")
 async def root():

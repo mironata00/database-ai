@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import LayoutWithSidebar from '../../layout-with-sidebar'
-import { Mail, Phone, Globe, MapPin, Star, Upload, Download, X, Plus, Trash2, Palette } from 'lucide-react'
+import { Mail, Phone, Globe, MapPin, Star, Upload, Download, X, Plus, Trash2, Palette, Edit2, Check } from 'lucide-react'
 
 const AVAILABLE_COLORS = [
   { hex: '#3B82F6', name: 'Синий (Вода)', category: 'water' },
@@ -16,21 +16,30 @@ const AVAILABLE_COLORS = [
   { hex: '#F59E0B', name: 'Оранжевый', category: 'custom' },
 ]
 
+const STATUS_OPTIONS = [
+  { value: 'ACTIVE', label: 'Активен', color: 'green' },
+  { value: 'INACTIVE', label: 'Неактивен', color: 'gray' },
+  { value: 'BLACKLIST', label: 'Черный список', color: 'red' },
+]
+
 export default function SupplierDetailPage() {
   const router = useRouter()
   const params = useParams()
   const [supplier, setSupplier] = useState<any>(null)
   const [imports, setImports] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [newRating, setNewRating] = useState('')
+  const [editingField, setEditingField] = useState<string | null>(null)
+  const [editValue, setEditValue] = useState<any>('')
+  const [editingStatus, setEditingStatus] = useState(false)
+  const [selectedStatus, setSelectedStatus] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [tags, setTags] = useState<string[]>([])
   const [newTag, setNewTag] = useState('')
   const [showColorPicker, setShowColorPicker] = useState(false)
-  const [selectedColor, setSelectedColor] = useState('#3B82F6')
   const [userRole, setUserRole] = useState<string>('')
+  const [newRating, setNewRating] = useState('')
   const prevImportsRef = useRef<any[]>([])
 
   const API_URL = typeof window !== 'undefined'
@@ -65,7 +74,6 @@ export default function SupplierDetailPage() {
     })
 
     if (hadProcessing && hasNewCompleted) {
-      console.log('Парсинг завершён! Обновляю теги...')
       fetchSupplier()
     }
 
@@ -83,7 +91,7 @@ export default function SupplierDetailPage() {
         setSupplier(data)
         setNewRating(data.rating?.toString() || '0')
         setTags(data.tags_array || [])
-        setSelectedColor(data.color || '#3B82F6')
+        setSelectedStatus(data.status || 'ACTIVE')
       }
     } catch (error) {
       console.error('Error:', error)
@@ -105,6 +113,154 @@ export default function SupplierDetailPage() {
     } catch (error) {
       console.error('Error:', error)
     }
+  }
+
+  const startEdit = (field: string, currentValue: any) => {
+    if (!isAdmin) return
+    setEditingField(field)
+    setEditValue(currentValue || '')
+  }
+
+  const saveField = async (field: string) => {
+    if (!isAdmin) return
+
+    try {
+      const token = localStorage.getItem('access_token')
+      const response = await fetch(`${API_URL}/api/suppliers/${params.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ [field]: editValue })
+      })
+
+      if (response.ok) {
+        const updated = await response.json()
+        setSupplier(updated)
+        setEditingField(null)
+      }
+    } catch (error) {
+      console.error('Error:', error)
+      alert('Ошибка сохранения')
+    }
+  }
+
+  const saveStatus = async () => {
+    if (!isAdmin) return
+
+    try {
+      const token = localStorage.getItem('access_token')
+      const response = await fetch(`${API_URL}/api/suppliers/${params.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ status: selectedStatus })
+      })
+
+      if (response.ok) {
+        const updated = await response.json()
+        setSupplier(updated)
+        setEditingStatus(false)
+      }
+    } catch (error) {
+      console.error('Error:', error)
+      alert('Ошибка сохранения статуса')
+    }
+  }
+
+  const handleRatingUpdate = async () => {
+    if (!isAdmin) return
+
+    try {
+      const token = localStorage.getItem('access_token')
+      const response = await fetch(`${API_URL}/api/suppliers/${params.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ rating: parseFloat(newRating) })
+      })
+
+      if (response.ok) {
+        const updated = await response.json()
+        setSupplier(updated)
+      }
+    } catch (error) {
+      console.error('Error:', error)
+    }
+  }
+
+  const updateColor = async (newColor: string) => {
+    if (!isAdmin) return
+
+    try {
+      const token = localStorage.getItem('access_token')
+      const response = await fetch(`${API_URL}/api/suppliers/${params.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ color: newColor })
+      })
+
+      if (response.ok) {
+        const updated = await response.json()
+        setSupplier(updated)
+        setShowColorPicker(false)
+      }
+    } catch (error) {
+      console.error('Error:', error)
+    }
+  }
+
+  const updateTags = async (newTags: string[]) => {
+    if (!isAdmin) return
+
+    try {
+      const token = localStorage.getItem('access_token')
+      const response = await fetch(`${API_URL}/api/suppliers/${params.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ tags_array: newTags })
+      })
+
+      if (response.ok) {
+        const updated = await response.json()
+        setSupplier(updated)
+        setTags(newTags)
+      }
+    } catch (error) {
+      console.error('Error:', error)
+    }
+  }
+
+  const addTag = () => {
+    if (!isAdmin || newTag.trim() === '' || tags.includes(newTag.trim())) return
+    const newTags = [...tags, newTag.trim()]
+    setTags(newTags)
+    updateTags(newTags)
+    setNewTag('')
+  }
+
+  const removeTag = (tagToRemove: string) => {
+    if (!isAdmin) return
+    const newTags = tags.filter(t => t !== tagToRemove)
+    setTags(newTags)
+    updateTags(newTags)
+  }
+
+  const clearAllTags = () => {
+    if (!isAdmin || !confirm('Удалить все теги?')) return
+    setTags([])
+    updateTags([])
   }
 
   const handleFileUpload = async () => {
@@ -186,100 +342,48 @@ export default function SupplierDetailPage() {
     }
   }
 
-  const saveTags = async (newTags: string[]) => {
-    if (!isAdmin) return
+  const EditableField = ({ label, value, field, type = 'text', placeholder = '' }: any) => {
+    const isEditing = editingField === field
 
-    try {
-      const token = localStorage.getItem('access_token')
-      const response = await fetch(`${API_URL}/api/suppliers/${params.id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ tags_array: newTags })
-      })
-
-      if (response.ok) {
-        const updated = await response.json()
-        setSupplier(updated)
-        setTags(updated.tags_array || [])
-      }
-    } catch (error) {
-      console.error('Error:', error)
-    }
-  }
-
-  const saveColor = async (color: string) => {
-    if (!isAdmin) return
-
-    try {
-      const token = localStorage.getItem('access_token')
-      const response = await fetch(`${API_URL}/api/suppliers/${params.id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ color })
-      })
-
-      if (response.ok) {
-        const updated = await response.json()
-        setSupplier(updated)
-        setSelectedColor(updated.color)
-        setShowColorPicker(false)
-      }
-    } catch (error) {
-      console.error('Error:', error)
-    }
-  }
-
-  const handleRatingUpdate = async () => {
-    if (!isAdmin) return
-    const rating = parseFloat(newRating)
-    if (isNaN(rating)) return
-
-    try {
-      const token = localStorage.getItem('access_token')
-      const response = await fetch(`${API_URL}/api/suppliers/${params.id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ rating })
-      })
-
-      if (response.ok) {
-        const updated = await response.json()
-        setSupplier(updated)
-        setNewRating(updated.rating?.toString() || '0')
-      }
-    } catch (error) {
-      console.error('Error:', error)
-    }
-  }
-
-  const addTag = () => {
-    if (!isAdmin || newTag.trim() === '' || tags.includes(newTag.trim())) return
-    const newTags = [...tags, newTag.trim()]
-    setTags(newTags)
-    setNewTag('')
-    saveTags(newTags)
-  }
-
-  const removeTag = (tagToRemove: string) => {
-    if (!isAdmin) return
-    const newTags = tags.filter(t => t !== tagToRemove)
-    setTags(newTags)
-    saveTags(newTags)
-  }
-
-  const clearAllTags = () => {
-    if (!isAdmin || !confirm('Удалить все теги?')) return
-    setTags([])
-    saveTags([])
+    return (
+      <div className="flex justify-between items-center py-3 border-b hover:bg-gray-50 group">
+        <span className="text-gray-600 font-medium">{label}</span>
+        <div className="flex items-center space-x-2">
+          {isEditing ? (
+            <>
+              <input
+                type={type}
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                className="px-3 py-1 border rounded focus:ring-2 focus:ring-blue-500 outline-none"
+                placeholder={placeholder}
+                autoFocus
+              />
+              <button onClick={() => saveField(field)} className="p-1 text-green-600 hover:bg-green-50 rounded">
+                <Check className="w-4 h-4" />
+              </button>
+              <button onClick={() => setEditingField(null)} className="p-1 text-gray-600 hover:bg-gray-100 rounded">
+                <X className="w-4 h-4" />
+              </button>
+            </>
+          ) : (
+            <>
+              <span className={`${value ? 'font-medium' : 'text-gray-400 italic'}`}>
+                {value || placeholder || 'Не указано'}
+              </span>
+              {isAdmin && (
+                <button
+                  onClick={() => startEdit(field, value)}
+                  className="p-1 text-blue-600 opacity-0 group-hover:opacity-100 hover:bg-blue-50 rounded"
+                >
+                  <Edit2 className="w-4 h-4" />
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    )
   }
 
   if (loading) {
@@ -302,117 +406,134 @@ export default function SupplierDetailPage() {
     )
   }
 
-  const InfoRow = ({ label, value }: { label: string; value: any }) => {
-    if (!value) return null
-    return (
-      <div className="flex justify-between py-2 border-b">
-        <span className="text-gray-600">{label}</span>
-        <span className="font-medium">{value}</span>
-      </div>
-    )
-  }
-
   return (
     <LayoutWithSidebar>
-      <div 
-        className="bg-white border-b"
-        style={{ borderLeft: `3px solid ${selectedColor}` }}
-      >
+      <div className="bg-white border-b" style={{ borderLeft: `3px solid ${supplier.color}` }}>
         <div className="max-w-7xl mx-auto px-4 py-4">
           <h1 className="text-xl font-semibold">{supplier.name}</h1>
-          {!isAdmin && (
-            <p className="text-sm text-gray-500 mt-1">Режим просмотра (менеджер)</p>
-          )}
+          {!isAdmin && <p className="text-sm text-gray-500 mt-1">Режим просмотра (менеджер)</p>}
         </div>
       </div>
 
       <div className="max-w-7xl mx-auto px-4 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
+            {/* Реквизиты */}
             <div className="bg-white rounded-lg border p-6">
               <h2 className="text-lg font-semibold mb-4">Реквизиты</h2>
               <div className="space-y-1">
-                <InfoRow label="ИНН" value={supplier.inn} />
-                <InfoRow label="КПП" value={supplier.kpp} />
-                <InfoRow label="ОГРН" value={supplier.ogrn} />
+                <EditableField label="Название компании" value={supplier.name} field="name" placeholder="Введите название" />
+                <EditableField label="ИНН" value={supplier.inn} field="inn" placeholder="Введите ИНН" />
+                <EditableField label="КПП" value={supplier.kpp} field="kpp" placeholder="Введите КПП" />
+                <EditableField label="ОГРН" value={supplier.ogrn} field="ogrn" placeholder="Введите ОГРН" />
               </div>
             </div>
 
+            {/* Контакты */}
             <div className="bg-white rounded-lg border p-6">
               <h2 className="text-lg font-semibold mb-4">Контакты</h2>
-              <div className="space-y-3">
-                {supplier.email && <div className="flex items-center space-x-2"><Mail className="w-4 h-4 text-gray-400" /><a href={`mailto:${supplier.email}`} className="text-blue-600">{supplier.email}</a></div>}
-                {supplier.phone && <div className="flex items-center space-x-2"><Phone className="w-4 h-4 text-gray-400" /><span>{supplier.phone}</span></div>}
-                {supplier.website && <div className="flex items-center space-x-2"><Globe className="w-4 h-4 text-gray-400" /><a href={supplier.website} target="_blank" className="text-blue-600">{supplier.website}</a></div>}
+              <div className="space-y-1">
+                <EditableField label="Email" value={supplier.email} field="email" type="email" placeholder="Введите email" />
+                <EditableField label="Телефон" value={supplier.phone} field="phone" type="tel" placeholder="Введите телефон" />
+                <EditableField label="Сайт" value={supplier.website} field="website" placeholder="Введите сайт" />
               </div>
             </div>
 
-            {(supplier.contact_person || supplier.contact_phone || supplier.contact_email) && (
-              <div className="bg-white rounded-lg border p-6">
-                <h2 className="text-lg font-semibold mb-4">Контактное лицо</h2>
-                <div className="space-y-2">
-                  <InfoRow label="ФИО" value={supplier.contact_person} />
-                  <InfoRow label="Должность" value={supplier.contact_position} />
-                  {supplier.contact_phone && <div className="flex items-center space-x-2 py-2"><Phone className="w-4 h-4 text-gray-400" /><span>{supplier.contact_phone}</span></div>}
-                  {supplier.contact_email && <div className="flex items-center space-x-2 py-2"><Mail className="w-4 h-4 text-gray-400" /><a href={`mailto:${supplier.contact_email}`} className="text-blue-600">{supplier.contact_email}</a></div>}
-                </div>
+            {/* Контактное лицо */}
+            <div className="bg-white rounded-lg border p-6">
+              <h2 className="text-lg font-semibold mb-4">Контактное лицо</h2>
+              <div className="space-y-1">
+                <EditableField label="ФИО" value={supplier.contact_person} field="contact_person" placeholder="Введите ФИО" />
+                <EditableField label="Должность" value={supplier.contact_position} field="contact_position" placeholder="Введите должность" />
+                <EditableField label="Телефон" value={supplier.contact_phone} field="contact_phone" type="tel" placeholder="Введите телефон" />
+                <EditableField label="Email" value={supplier.contact_email} field="contact_email" type="email" placeholder="Введите email" />
               </div>
-            )}
+            </div>
 
-            {(supplier.legal_address || supplier.actual_address) && (
-              <div className="bg-white rounded-lg border p-6">
-                <h2 className="text-lg font-semibold mb-4">Адреса</h2>
-                <div className="space-y-3">
-                  {supplier.legal_address && <div><div className="text-sm text-gray-600 mb-1">Юридический</div><div className="flex items-start space-x-2"><MapPin className="w-4 h-4 text-gray-400 mt-1" /><span>{supplier.legal_address}</span></div></div>}
-                  {supplier.actual_address && <div><div className="text-sm text-gray-600 mb-1">Фактический</div><div className="flex items-start space-x-2"><MapPin className="w-4 h-4 text-gray-400 mt-1" /><span>{supplier.actual_address}</span></div></div>}
-                </div>
+            {/* Адреса */}
+            <div className="bg-white rounded-lg border p-6">
+              <h2 className="text-lg font-semibold mb-4">Адреса</h2>
+              <div className="space-y-1">
+                <EditableField label="Юридический адрес" value={supplier.legal_address} field="legal_address" placeholder="Введите адрес" />
+                <EditableField label="Фактический адрес" value={supplier.actual_address} field="actual_address" placeholder="Введите адрес" />
               </div>
-            )}
+            </div>
 
+            {/* Условия работы */}
             <div className="bg-white rounded-lg border p-6">
               <h2 className="text-lg font-semibold mb-4">Условия работы</h2>
               <div className="space-y-1">
-                <InfoRow label="Оплата" value={supplier.payment_terms} />
-                <InfoRow label="Мин. сумма" value={supplier.min_order_sum ? `${supplier.min_order_sum} ₽` : null} />
-                {supplier.delivery_regions && supplier.delivery_regions.length > 0 && (
-                  <div className="py-2">
-                    <div className="text-gray-600 mb-2">Регионы</div>
-                    <div className="flex flex-wrap gap-2">
-                      {supplier.delivery_regions.map((r: string, i: number) => (
-                        <span key={i} className="px-2 py-1 bg-gray-100 rounded text-sm">{r}</span>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                <EditableField label="Условия оплаты" value={supplier.payment_terms} field="payment_terms" placeholder="Введите условия" />
+                <EditableField label="Мин. сумма заказа (₽)" value={supplier.min_order_sum} field="min_order_sum" type="number" placeholder="0" />
               </div>
             </div>
 
-            {supplier.notes && (
-              <div className="bg-white rounded-lg border p-6">
-                <h2 className="text-lg font-semibold mb-4">Примечания</h2>
-                <p className="whitespace-pre-wrap">{supplier.notes}</p>
-              </div>
-            )}
+            {/* Примечания */}
+            <div className="bg-white rounded-lg border p-6">
+              <h2 className="text-lg font-semibold mb-4">Примечания</h2>
+              <EditableField label="" value={supplier.notes} field="notes" placeholder="Добавьте примечания" />
+            </div>
           </div>
 
           <div className="space-y-6">
+            {/* Статус */}
+            <div className="bg-white rounded-lg border p-6">
+              <h2 className="text-lg font-semibold mb-4">Статус</h2>
+              <div className="flex justify-between items-center py-2 hover:bg-gray-50 group">
+                <div className="flex items-center space-x-2">
+                  {editingStatus ? (
+                    <>
+                      <select
+                        value={selectedStatus}
+                        onChange={(e) => setSelectedStatus(e.target.value)}
+                        className="px-3 py-1 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                        autoFocus
+                      >
+                        {STATUS_OPTIONS.map(opt => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                      <button onClick={saveStatus} className="p-1 text-green-600 hover:bg-green-50 rounded">
+                        <Check className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => { setEditingStatus(false); setSelectedStatus(supplier.status); }} className="p-1 text-gray-600 hover:bg-gray-100 rounded">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <span className={`px-3 py-1 text-sm rounded-full ${
+                        supplier.status === 'ACTIVE' ? 'bg-green-100 text-green-800' :
+                        supplier.status === 'BLACKLIST' ? 'bg-red-100 text-red-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}>
+                        {STATUS_OPTIONS.find(s => s.value === supplier.status)?.label || supplier.status}
+                      </span>
+                      {isAdmin && (
+                        <button
+                          onClick={() => { setEditingStatus(true); setSelectedStatus(supplier.status); }}
+                          className="p-1 text-blue-600 opacity-0 group-hover:opacity-100 hover:bg-blue-50 rounded"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Остальной код без изменений - цвет, рейтинг, теги, прайс-листы */}
+            {/* Цвет категории */}
             <div className="bg-white rounded-lg border p-6">
               <h2 className="text-lg font-semibold mb-4">Цвет категории</h2>
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center space-x-3">
-                  <div 
-                    className="w-12 h-12 rounded-full border-2 border-gray-300" 
-                    style={{ backgroundColor: selectedColor }}
-                  />
-                  <span className="text-sm text-gray-600">
-                    {AVAILABLE_COLORS.find(c => c.hex === selectedColor)?.name || 'Цвет'}
-                  </span>
+                  <div className="w-12 h-12 rounded-full border-2 border-gray-300" style={{ backgroundColor: supplier.color }} />
+                  <span className="text-sm text-gray-600">{AVAILABLE_COLORS.find(c => c.hex === supplier.color)?.name || 'Цвет'}</span>
                 </div>
                 {isAdmin && (
-                  <button
-                    onClick={() => setShowColorPicker(!showColorPicker)}
-                    className="p-2 hover:bg-gray-100 rounded-lg"
-                  >
+                  <button onClick={() => setShowColorPicker(!showColorPicker)} className="p-2 hover:bg-gray-100 rounded-lg">
                     <Palette className="w-5 h-5" />
                   </button>
                 )}
@@ -423,15 +544,10 @@ export default function SupplierDetailPage() {
                   {AVAILABLE_COLORS.map((color) => (
                     <button
                       key={color.hex}
-                      onClick={() => saveColor(color.hex)}
-                      className={`flex items-center space-x-2 p-2 border rounded-lg hover:bg-gray-50 ${
-                        selectedColor === color.hex ? 'border-blue-500 bg-blue-50' : ''
-                      }`}
+                      onClick={() => updateColor(color.hex)}
+                      className={`flex items-center space-x-2 p-2 border rounded-lg hover:bg-gray-50 ${supplier.color === color.hex ? 'border-blue-500 bg-blue-50' : ''}`}
                     >
-                      <div 
-                        className="w-6 h-6 rounded-full border" 
-                        style={{ backgroundColor: color.hex }}
-                      />
+                      <div className="w-6 h-6 rounded-full border" style={{ backgroundColor: color.hex }} />
                       <span className="text-xs">{color.name}</span>
                     </button>
                   ))}
@@ -439,6 +555,7 @@ export default function SupplierDetailPage() {
               )}
             </div>
 
+            {/* Рейтинг */}
             <div className="bg-white rounded-lg border p-6">
               <h2 className="text-lg font-semibold mb-4">Рейтинг</h2>
               <div className="flex items-center space-x-3 mb-4">
@@ -452,16 +569,14 @@ export default function SupplierDetailPage() {
                     step="0.1"
                     value={newRating}
                     onChange={(e) => setNewRating(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleRatingUpdate()}
                     className="flex-1 px-3 py-2 border rounded-lg"
                   />
-                  <button onClick={handleRatingUpdate} className="px-4 py-2 bg-blue-500 text-white rounded-lg">
-                    OK
-                  </button>
+                  <button onClick={handleRatingUpdate} className="px-4 py-2 bg-blue-500 text-white rounded-lg">OK</button>
                 </div>
               )}
             </div>
 
+            {/* Теги */}
             <div className="bg-white rounded-lg border p-6">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold">Теги</h2>
@@ -501,18 +616,13 @@ export default function SupplierDetailPage() {
               </div>
             </div>
 
+            {/* Прайс-листы */}
             <div className="bg-white rounded-lg border p-6">
               <h2 className="text-lg font-semibold mb-4">Прайс-листы ({imports.length})</h2>
 
               {isAdmin && (
                 <div className="mb-4">
-                  <input
-                    type="file"
-                    id="file"
-                    onChange={(e) => setFile(e.target.files?.[0] || null)}
-                    accept=".xlsx,.xls,.csv"
-                    className="hidden"
-                  />
+                  <input type="file" id="file" onChange={(e) => setFile(e.target.files?.[0] || null)} accept=".xlsx,.xls,.csv" className="hidden" />
                   <label htmlFor="file" className="cursor-pointer block border-2 border-dashed rounded p-4 text-center hover:bg-gray-50">
                     <Upload className="w-8 h-8 mx-auto mb-2 text-gray-400" />
                     <div className="text-sm text-gray-600">{file ? file.name : 'Загрузить'}</div>

@@ -204,6 +204,7 @@ async def get_supplier(supplier_id: UUID, db: AsyncSession = Depends(get_db)):
 
 @router.put("/{supplier_id}", response_model=SupplierResponse)
 async def update_supplier(supplier_id: UUID, supplier_data: SupplierUpdate, db: AsyncSession = Depends(get_db)):
+    """Полное обновление поставщика (заменяет все поля)"""
     result = await db.execute(select(Supplier).where(Supplier.id == supplier_id))
     supplier = result.scalar_one_or_none()
     if not supplier:
@@ -218,17 +219,48 @@ async def update_supplier(supplier_id: UUID, supplier_data: SupplierUpdate, db: 
 
 @router.patch("/{supplier_id}", response_model=SupplierResponse)
 async def patch_supplier(supplier_id: UUID, supplier_data: SupplierUpdate, db: AsyncSession = Depends(get_db)):
+    """Частичное обновление поставщика (обновляет только переданные поля)"""
     result = await db.execute(select(Supplier).where(Supplier.id == supplier_id))
     supplier = result.scalar_one_or_none()
     if not supplier:
         raise HTTPException(status_code=404, detail="Supplier not found")
 
-    for key, value in supplier_data.dict(exclude_unset=True).items():
-        setattr(supplier, key, value)
+    # Обновляем только те поля, которые были переданы
+    update_data = supplier_data.dict(exclude_unset=True)
+    for key, value in update_data.items():
+        if hasattr(supplier, key):
+            setattr(supplier, key, value)
 
     await db.commit()
     await db.refresh(supplier)
     return SupplierResponse.from_orm(supplier)
+
+@router.delete("/{supplier_id}")
+async def delete_supplier(supplier_id: UUID, db: AsyncSession = Depends(get_db)):
+    """Удалить поставщика и все связанные данные (продукты, импорты, рейтинги)"""
+    result = await db.execute(select(Supplier).where(Supplier.id == supplier_id))
+    supplier = result.scalar_one_or_none()
+    if not supplier:
+        raise HTTPException(status_code=404, detail="Supplier not found")
+    
+    # Удаляем файлы импортов
+    import os
+    result_imports = await db.execute(
+        select(ProductImport).where(ProductImport.supplier_id == supplier_id)
+    )
+    imports = result_imports.scalars().all()
+    for imp in imports:
+        if imp.file_url and os.path.exists(imp.file_url):
+            try:
+                os.remove(imp.file_url)
+            except Exception as e:
+                print(f"Error deleting file {imp.file_url}: {e}")
+    
+    # Удаляем поставщика (cascade удалит products, ratings, email_threads, product_imports)
+    await db.delete(supplier)
+    await db.commit()
+    
+    return {"deleted": True, "supplier_id": str(supplier_id), "name": supplier.name}
 
 @router.get("/{supplier_id}/imports")
 async def get_supplier_imports(supplier_id: UUID, db: AsyncSession = Depends(get_db)):
@@ -355,3 +387,30 @@ async def delete_import(supplier_id: UUID, import_id: UUID, db: AsyncSession = D
     await db.commit()
 
     return {"deleted": True}
+
+@router.delete("/{supplier_id}")
+async def delete_supplier(supplier_id: UUID, db: AsyncSession = Depends(get_db)):
+    """Удалить поставщика и все связанные данные"""
+    result = await db.execute(select(Supplier).where(Supplier.id == supplier_id))
+    supplier = result.scalar_one_or_none()
+    if not supplier:
+        raise HTTPException(status_code=404, detail="Supplier not found")
+    
+    # Удаляем файлы импортов
+    import os
+    result_imports = await db.execute(
+        select(ProductImport).where(ProductImport.supplier_id == supplier_id)
+    )
+    imports = result_imports.scalars().all()
+    for imp in imports:
+        if imp.file_url and os.path.exists(imp.file_url):
+            try:
+                os.remove(imp.file_url)
+            except Exception:
+                pass
+    
+    # Удаляем поставщика (cascade удалит связанные данные)
+    await db.delete(supplier)
+    await db.commit()
+    
+    return {"deleted": True, "supplier_id": str(supplier_id), "name": supplier.name}
