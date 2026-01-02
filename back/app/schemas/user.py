@@ -1,57 +1,58 @@
-from pydantic import BaseModel, EmailStr, Field, validator
+from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
-from datetime import datetime
-from uuid import UUID
 from app.models.user import UserRole
 
-
 class UserBase(BaseModel):
-    username: str = Field(..., min_length=3, max_length=100)
     email: EmailStr
     full_name: Optional[str] = None
-    phone: Optional[str] = None
-    role: UserRole = UserRole.manager
-
+    role: UserRole = UserRole.viewer
 
 class UserCreate(UserBase):
-    password: str = Field(..., min_length=8, max_length=100)
-
+    password: str = Field(..., min_length=6)
+    # SMTP поля опциональны при создании
+    smtp_host: Optional[str] = None
+    smtp_port: Optional[int] = 587
+    smtp_user: Optional[str] = None
+    smtp_password: Optional[str] = None
+    smtp_use_tls: Optional[bool] = True
+    smtp_from_name: Optional[str] = None
+    email_default_subject: Optional[str] = "Запрос цен"
+    email_default_body: Optional[str] = "Добрый день!\n\nПросим предоставить актуальные цены и сроки поставки на следующие товары:"
+    email_signature: Optional[str] = "С уважением,"
 
 class UserUpdate(BaseModel):
-    username: Optional[str] = Field(None, min_length=3, max_length=100)
+    """ТОЛЬКО админ может обновлять эти поля"""
     email: Optional[EmailStr] = None
     full_name: Optional[str] = None
-    phone: Optional[str] = None
     role: Optional[UserRole] = None
     is_active: Optional[bool] = None
-    password: Optional[str] = Field(None, min_length=8, max_length=100)
+    password: Optional[str] = None
+    # SMTP настройки
+    smtp_host: Optional[str] = None
+    smtp_port: Optional[int] = None
+    smtp_user: Optional[str] = None
+    smtp_password: Optional[str] = None
+    smtp_use_tls: Optional[bool] = None
+    smtp_from_name: Optional[str] = None
+    # Email шаблоны
+    email_default_subject: Optional[str] = None
+    email_default_body: Optional[str] = None
+    email_signature: Optional[str] = None
 
-
-class UserInDB(UserBase):
-    id: UUID
+class UserResponse(UserBase):
+    id: str
     is_active: bool
-    created_at: datetime
-    updated_at: datetime
+    # Показываем настроен ли SMTP
+    has_smtp_configured: bool = False
+    # SMTP данные (БЕЗ пароля)
+    smtp_host: Optional[str] = None
+    smtp_port: Optional[int] = None
+    smtp_user: Optional[str] = None
+    smtp_from_name: Optional[str] = None
+    # Email шаблоны
+    email_default_subject: Optional[str] = None
+    email_default_body: Optional[str] = None
+    email_signature: Optional[str] = None
     
     class Config:
         from_attributes = True
-
-
-class UserResponse(UserInDB):
-    pass
-
-
-class TokenResponse(BaseModel):
-    access_token: str
-    refresh_token: str
-    token_type: str = "bearer"
-    user: UserResponse
-
-
-class LoginRequest(BaseModel):
-    username: str
-    password: str
-
-
-class RefreshTokenRequest(BaseModel):
-    refresh_token: str

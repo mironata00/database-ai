@@ -1,31 +1,75 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.core.database import get_db
-from app.core.config import settings
-from app.schemas.price_request import PriceRequestCreate, PriceRequestResponse
-from app.tasks.email_tasks import send_price_request_email
-from app.models.supplier import Supplier
 from sqlalchemy import select
 from uuid import UUID
+from app.core.database import get_db
+from app.schemas.price_request import PriceRequestCreate, PriceRequestResponse
+from app.tasks.email_tasks import send_price_request_email_personal
+from app.models.supplier import Supplier
+from app.models.user import User
+from app.api.auth import get_current_user
+import time
 
 router = APIRouter()
 
 @router.get("/defaults")
-async def get_price_request_defaults():
-    """Возвращает шаблон письма для фронтенда"""
+async def get_price_request_defaults(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Возвращает шаблон письма для текущего менеджера"""
+    result = await db.execute(select(User).where(User.id == current_user['id']))
+    user = result.scalar_one_or_none()
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
     return {
-        "subject": settings.PRICE_REQUEST_DEFAULT_SUBJECT,
-        "body": settings.PRICE_REQUEST_DEFAULT_HEADER.replace('\\n', '\n'),
-        "reply_to": settings.PRICE_REQUEST_REPLY_TO_EMAIL
+        "subject": user.email_default_subject or "Запрос цен",
+        "body": user.email_default_body or "Добрый день!\n\nПросим предоставить актуальные цены и сроки поставки на следующие товары:",
+        "signature": user.email_signature or "С уважением,",
+        "from_name": user.smtp_from_name or user.full_name or "Database AI",
+        "from_email": user.smtp_user or user.email,
+        "has_smtp": user.has_smtp_configured()
     }
 
 @router.post("/send", response_model=PriceRequestResponse)
-async def send_price_requests(request: PriceRequestCreate, db: AsyncSession = Depends(get_db)):
-    """Отправить запрос цен поставщикам"""
+async def send_price_requests(
+    request: PriceRequestCreate,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Отправить запрос цен от имени текущего менеджера"""
+    
+    # Получаем полные данные user с SMTP
+    result = await db.execute(select(User).where(User.id == current_user['id']))
+    user = result.scalar_one_or_none()
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    if not user.has_smtp_configured():
+        raise HTTPException(
+            status_code=400,
+            detail="SMTP не настроен. Обратитесь к администратору для настройки отправки писем."
+        )
+    
+    # Формируем SMTP конфиг менеджера
+    user_smtp_config = {
+        'host': user.smtp_host,
+        'port': user.smtp_port,
+        'user': user.smtp_user,
+        'password': user.smtp_password,
+        'use_tls': user.smtp_use_tls,
+        'from_name': user.smtp_from_name or user.full_name or "Database AI",
+        'from_email': user.smtp_user
+    }
+    
     results = []
     sent_count = 0
     failed_count = 0
     
+    # Получаем поставщиков
     supplier_uuids = [UUID(sid) for sid in request.supplier_ids]
     result = await db.execute(select(Supplier).where(Supplier.id.in_(supplier_uuids)))
     suppliers = result.scalars().all()
@@ -36,6 +80,11 @@ async def send_price_requests(request: PriceRequestCreate, db: AsyncSession = De
         for p in request.products
     ])
     
+    # Добавляем подпись менеджера
+    signature = user.email_signature or ""
+    email_body = f"{request.body}\n\n{products_text}\n{signature}"
+    
+    # Отправляем письма с паузой 3 сек
     for supplier in suppliers:
         if not supplier.email:
             failed_count += 1
@@ -48,16 +97,13 @@ async def send_price_requests(request: PriceRequestCreate, db: AsyncSession = De
             continue
         
         try:
-            # Собираем письмо из трех частей ENV
-            header = settings.PRICE_REQUEST_DEFAULT_HEADER.replace('\\n', '\n')
-            footer = settings.PRICE_REQUEST_DEFAULT_FOOTER.replace('\\n', '\n')
-            email_body = f"{header}\n\n{products_text}{footer}"
-            
-            task = send_price_request_email.delay(
-                supplier_email=supplier.email,
-                supplier_name=supplier.name,
+            # Отправляем через Celery task
+            task = send_price_request_email_personal.delay(
+                user_smtp_config=user_smtp_config,
+                to_email=supplier.email,
                 subject=request.subject,
-                body=email_body
+                body=email_body,
+                reply_to=user.email
             )
             
             sent_count += 1
@@ -66,8 +112,12 @@ async def send_price_requests(request: PriceRequestCreate, db: AsyncSession = De
                 "supplier_name": supplier.name,
                 "supplier_email": supplier.email,
                 "success": True,
-                "task_id": task.id
+                "task_id": task.id,
+                "from_email": user_smtp_config['from_email']
             })
+            
+            # Пауза 3 секунды между отправками
+            time.sleep(3)
             
         except Exception as e:
             failed_count += 1

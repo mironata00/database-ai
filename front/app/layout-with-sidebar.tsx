@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter, usePathname } from 'next/navigation'
-import { Home, Users, FileText, MessageSquare, Settings, LogOut } from 'lucide-react'
+import { Home, Users, FileText, Settings, LogOut } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 interface LayoutProps {
@@ -13,7 +13,16 @@ export default function LayoutWithSidebar({ children, pendingRequestsCount: exte
   const router = useRouter()
   const pathname = usePathname()
   const [pendingCount, setPendingCount] = useState(externalCount || 0)
+  const [user, setUser] = useState<any>(null)
   const API_URL = typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.host}` : 'http://localhost'
+
+  useEffect(() => {
+    // Загружаем данные пользователя из localStorage
+    const userData = localStorage.getItem('user')
+    if (userData) {
+      setUser(JSON.parse(userData))
+    }
+  }, [])
 
   const fetchPendingCount = async () => {
     try {
@@ -49,12 +58,29 @@ export default function LayoutWithSidebar({ children, pendingRequestsCount: exte
     router.push('/login')
   }
 
-  const navigation = [
-    { name: 'Главная', href: '/', icon: Home },
-    { name: 'База поставщиков', href: '/suppliers', icon: Users },
-    { name: 'Менеджеры', href: '/managers', icon: Settings },
-    { name: 'Заявки на проверку', href: '/requests', icon: FileText, badge: pendingCount }
+  const isAdmin = user?.role === 'admin'
+
+  // Навигация с проверкой роли
+  const allNavigation = [
+    { name: 'Главная', href: '/', icon: Home, roles: ['admin', 'manager', 'viewer'] },
+    { name: 'База поставщиков', href: '/suppliers', icon: Users, roles: ['admin', 'manager', 'viewer'] },
+    { name: 'Менеджеры', href: '/managers', icon: Settings, roles: ['admin'] },
+    { name: 'Заявки на проверку', href: '/requests', icon: FileText, badge: pendingCount, roles: ['admin'] }
   ]
+
+  // Фильтруем навигацию по роли пользователя
+  const navigation = allNavigation.filter(item => 
+    item.roles.includes(user?.role || 'viewer')
+  )
+
+  const getRoleName = (role: string) => {
+    const roleNames: Record<string, string> = {
+      admin: 'Администратор',
+      manager: 'Менеджер',
+      viewer: 'Наблюдатель'
+    }
+    return roleNames[role] || role
+  }
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -68,17 +94,19 @@ export default function LayoutWithSidebar({ children, pendingRequestsCount: exte
           </div>
         </div>
 
-        <div className="p-4 border-b border-gray-800">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center font-semibold">
-              A
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">Алексей Иванов</p>
-              <p className="text-xs text-gray-400">Admin</p>
+        {user && (
+          <div className="p-4 border-b border-gray-800">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center font-semibold">
+                {user.full_name?.charAt(0) || user.email?.charAt(0).toUpperCase() || 'U'}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">{user.full_name || user.email}</p>
+                <p className="text-xs text-gray-400">{getRoleName(user.role)}</p>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
           {navigation.map((item) => {

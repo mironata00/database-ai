@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import LayoutWithSidebar from '../layout-with-sidebar'
-import { Plus, Search, Edit, Trash2, UserCheck, UserX } from 'lucide-react'
+import { Plus, Search, Edit, Trash2, UserCheck, UserX, Mail, CheckCircle, XCircle } from 'lucide-react'
 
 interface Manager {
   id: string
@@ -11,7 +11,9 @@ interface Manager {
   full_name: string | null
   role: string
   is_active: boolean
-  created_at: string
+  has_smtp_configured: boolean
+  smtp_user: string | null
+  created_at?: string
 }
 
 export default function ManagersPage() {
@@ -38,16 +40,9 @@ export default function ManagersPage() {
   const fetchManagers = async () => {
     try {
       const token = localStorage.getItem('access_token')
-      let url = `${API_URL}/api/managers/?limit=100`
+      const url = `${API_URL}/api/managers/?limit=100`
       
-      if (roleFilter !== 'all') {
-        url += `&role=${roleFilter}`
-      }
-      if (statusFilter !== 'all') {
-        url += `&is_active=${statusFilter === 'active' ? 'true' : 'false'}`
-      }
-
-      console.log('Fetching URL:', url)
+      console.log('Fetching managers from:', url)
       
       const response = await fetch(url, { 
         headers: { 'Authorization': `Bearer ${token}` } 
@@ -72,7 +67,10 @@ export default function ManagersPage() {
       }
 
       const data = await response.json()
-      setManagers(data.users || [])
+      console.log('Received data:', data)
+      
+      // ИСПРАВЛЕНИЕ: API возвращает массив напрямую, не { users: [] }
+      setManagers(Array.isArray(data) ? data : [])
     } catch (error) {
       console.error('Error:', error)
       alert('Ошибка соединения с сервером')
@@ -129,9 +127,13 @@ export default function ManagersPage() {
     }
   }
 
+  // Фильтрация на фронтенде
   const filteredManagers = managers.filter(m => {
     const q = searchQuery.toLowerCase()
-    return m.email.toLowerCase().includes(q) || (m.full_name?.toLowerCase() || '').includes(q)
+    const matchSearch = m.email.toLowerCase().includes(q) || (m.full_name?.toLowerCase() || '').includes(q)
+    const matchRole = roleFilter === 'all' || m.role === roleFilter
+    const matchStatus = statusFilter === 'all' || (statusFilter === 'active' ? m.is_active : !m.is_active)
+    return matchSearch && matchRole && matchStatus
   })
 
   const getRoleBadge = (role: string) => {
@@ -228,8 +230,8 @@ export default function ManagersPage() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Пользователь</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Роль</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">SMTP</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Статус</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Создан</th>
                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Действия</th>
                   </tr>
                 </thead>
@@ -248,17 +250,33 @@ export default function ManagersPage() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-gray-900">{m.email}</div>
+                        {m.smtp_user && (
+                          <div className="text-xs text-gray-500 flex items-center space-x-1 mt-1">
+                            <Mail className="w-3 h-3" />
+                            <span>{m.smtp_user}</span>
+                          </div>
+                        )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">{getRoleBadge(m.role)}</td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {m.has_smtp_configured ? (
+                          <span className="inline-flex items-center space-x-1 text-green-600 text-xs">
+                            <CheckCircle className="w-4 h-4" />
+                            <span>Настроен</span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center space-x-1 text-gray-400 text-xs">
+                            <XCircle className="w-4 h-4" />
+                            <span>Не настроен</span>
+                          </span>
+                        )}
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
                           m.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
                         }`}>
                           {m.is_active ? 'Активен' : 'Неактивен'}
                         </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {new Date(m.created_at).toLocaleDateString('ru')}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <div className="flex items-center justify-end space-x-2">
