@@ -1,32 +1,50 @@
 from celery import shared_task
 from app.utils.email_sender import email_sender
 from app.core.config import settings
-from app.core.database import get_db
-from sqlalchemy import select, func
+from app.core.redis_client import redis_client
 import logging
 
 logger = logging.getLogger(__name__)
 
-# Глобальный счетчик для карусели (общий для всех worker)
-from app.core.redis_client import redis_client
+def get_valid_accounts_count():
+    """Подсчет РЕАЛЬНЫХ аккаунтов (не заглушек)"""
+    valid_count = 0
+    for account in settings.EMAIL_SMTP_ACCOUNTS:
+        # Проверяем что это не заглушка
+        if not account['from_email'].startswith('your-email'):
+            valid_count += 1
+    return valid_count
 
 def get_next_account_index():
     """Получить следующий индекс аккаунта из Redis с учетом карусели"""
-    if not settings.PRICE_REQUEST_USE_CAROUSEL or len(settings.EMAIL_SMTP_ACCOUNTS) <= 1:
+    if not settings.PRICE_REQUEST_USE_CAROUSEL:
         return 0
     
     try:
-        # Атомарно увеличиваем счетчик в Redis
-        count = redis_client.incr('email_carousel_counter')
-        # Вычисляем индекс с учетом лимита на аккаунт
+        # Считаем ТОЛЬКО валидные аккаунты
+        total_accounts = get_valid_accounts_count()
+        
+        if total_accounts == 0:
+            logger.error("No valid SMTP accounts found!")
+            return 0
+        
         emails_per_account = settings.PRICE_REQUEST_EMAILS_PER_ACCOUNT
-        total_accounts = len(settings.EMAIL_SMTP_ACCOUNTS)
         
-        # Определяем какой аккаунт использовать
-        account_index = (count - 1) // emails_per_account % total_accounts
+        # Получаем текущий счетчик
+        count = redis_client.incr('email_carousel_counter')
         
-        logger.info(f"Carousel: count={count}, account_index={account_index}, emails_per_account={emails_per_account}")
+        # Вычисляем индекс аккаунта (циклично)
+        account_index = ((count - 1) // emails_per_account) % total_accounts
+        
+        logger.info(f"Carousel: count={count}, account_index={account_index}, emails_per_account={emails_per_account}, total_accounts={total_accounts}")
+        
+        # Если прошли все аккаунты - сбрасываем счетчик
+        if count >= total_accounts * emails_per_account:
+            redis_client.set('email_carousel_counter', 0)
+            logger.info("Carousel: Reset counter after full cycle")
+        
         return account_index
+        
     except Exception as e:
         logger.error(f"Redis error in carousel, using account 0: {e}")
         return 0
@@ -36,7 +54,6 @@ def send_price_request_email(self, supplier_email: str, supplier_name: str, subj
     logger.info(f"Sending price request to {supplier_name} ({supplier_email})")
     
     try:
-        # Получаем индекс аккаунта для карусели
         account_index = get_next_account_index()
         
         result = email_sender.send_email(
@@ -65,5 +82,4 @@ def send_price_request_email(self, supplier_email: str, supplier_name: str, subj
 @shared_task
 def check_imap_inbox():
     logger.info("Checking IMAP inbox for new emails")
-    # Заглушка - функционал проверки почты
     return {"status": "checked", "new_emails": 0}

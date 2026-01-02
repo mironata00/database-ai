@@ -8,7 +8,7 @@ import logging
 from app.core.config import settings
 from app.core.database import db_manager
 from app.core.elasticsearch import es_manager
-from app.api import auth, suppliers, search, admin, campaigns, managers, supplier_requests
+from app.api import auth, suppliers, search, admin, campaigns, managers, supplier_requests, auto_suppliers, auto_suppliers
 from app.api import price_requests
 from app.middleware.audit import AuditMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware

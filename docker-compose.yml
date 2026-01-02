@@ -293,3 +293,5 @@ volumes:
 networks:
   db_ai_v2_network:
     driver: bridge
+
+  # В секции api добавить переменные окружения (делается вручную)

@@ -394,6 +394,15 @@ class Settings(BaseSettings):
         env_file = ".env"
         case_sensitive = True
 
+    # Claude API
+    CLAUDE_API_KEY: Optional[str] = Field(default=None, env="CLAUDE_API_KEY")
+    CLAUDE_MODEL: str = Field(default="claude-sonnet-4-20250514", env="CLAUDE_MODEL")
+    CLAUDE_MAX_TOKENS: int = Field(default=4096, env="CLAUDE_MAX_TOKENS")
+
+    class Config:
+        env_file = ".env"
+        case_sensitive = True
+
 
 @lru_cache()
 def get_settings() -> Settings:

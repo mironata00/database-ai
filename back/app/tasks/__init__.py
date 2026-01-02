@@ -12,3 +12,6 @@ __all__ = [
     "celery_app",
     "parse_pricelist_task",
 ]
+
+# Auto supplier processing
+from app.tasks.auto_supplier_tasks import *
