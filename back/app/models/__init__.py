@@ -1,37 +1,27 @@
-from app.models.base import Base, BaseModel
+from app.models.base import BaseModel
 from app.models.user import User, UserRole
-from app.models.supplier import Supplier, SupplierStatus
+from app.models.email_provider import EmailProvider
+from app.models.supplier import Supplier
+from app.models.product import Product
+from app.models.product_import import ProductImport
 from app.models.rating import Rating
-from app.models.email import (
-    EmailTemplate,
-    EmailCampaign,
-    CampaignRecipient,
-    EmailThread,
-    EmailDirection,
-    CampaignStatus,
-)
-from app.models.product_import import ProductImport, ImportStatus
-from app.models.product import Product  # ДОБАВЛЕНО
-from app.models.audit_log import AuditLog, AuditAction
+from app.models.audit_log import AuditLog
+from app.models.email import EmailTemplate, EmailCampaign, CampaignRecipient, EmailThread
+from app.models.supplier_request import SupplierRequest
 
 __all__ = [
-    "Base",
     "BaseModel",
     "User",
-    "UserRole",
+    "UserRole", 
+    "EmailProvider",
     "Supplier",
-    "SupplierStatus",
+    "Product",
+    "ProductImport",
     "Rating",
+    "AuditLog",
     "EmailTemplate",
     "EmailCampaign",
     "CampaignRecipient",
     "EmailThread",
-    "EmailDirection",
-    "CampaignStatus",
-    "ProductImport",
-    "ImportStatus",
-    "Product",  # ДОБАВЛЕНО
-    "AuditLog",
-    "AuditAction",
+    "SupplierRequest",
 ]
-from app.models.supplier_request import SupplierRequest

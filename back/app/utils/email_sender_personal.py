@@ -3,8 +3,10 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import Dict
 import logging
+from app.utils.encryption import encryption
 
 logger = logging.getLogger(__name__)
+
 
 def send_email_from_user(
     user_smtp_config: Dict,
@@ -14,19 +16,23 @@ def send_email_from_user(
     reply_to: str = None
 ) -> Dict:
     """
-    Отправка email с личной почты менеджера
+    Отправка email с личной почты менеджера.
+    Автоматически дешифрует пароль если он зашифрован.
     
     user_smtp_config = {
         'host': 'smtp.jino.ru',
         'port': 587,
         'user': 'info@database-ai.ru',
-        'password': '12345678',
+        'password': 'enc:gAAA...' или 'plain_password',
         'use_tls': True,
         'from_name': 'Иван Иванов',
         'from_email': 'info@database-ai.ru'
     }
     """
     try:
+        # Дешифруем пароль если он зашифрован
+        password = encryption.decrypt(user_smtp_config['password'])
+        
         msg = MIMEMultipart('alternative')
         msg['From'] = f"{user_smtp_config['from_name']} <{user_smtp_config['from_email']}>"
         msg['To'] = to_email
@@ -44,7 +50,7 @@ def send_email_from_user(
         else:
             server = smtplib.SMTP_SSL(user_smtp_config['host'], user_smtp_config['port'])
         
-        server.login(user_smtp_config['user'], user_smtp_config['password'])
+        server.login(user_smtp_config['user'], password)
         server.send_message(msg)
         server.quit()
         

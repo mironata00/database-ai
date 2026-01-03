@@ -8,8 +8,19 @@ import logging
 from app.core.config import settings
 from app.core.database import db_manager
 from app.core.elasticsearch import es_manager
-from app.api import auth, suppliers, search, admin, campaigns, managers, supplier_requests, auto_suppliers, auto_suppliers
-from app.api import price_requests
+from app.api import (
+    mail,
+    auth, 
+    suppliers, 
+    search, 
+    admin, 
+    campaigns, 
+    managers, 
+    supplier_requests, 
+    auto_suppliers,
+    price_requests,
+    email_providers
+)
 from app.middleware.audit import AuditMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
 
@@ -19,24 +30,26 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan events."""
     logger.info("Starting Database AI application...")
-    
+
     # Initialize Elasticsearch
     try:
         await es_manager.create_products_index()
         logger.info("Elasticsearch initialized")
     except Exception as e:
         logger.error(f"Elasticsearch initialization failed: {e}")
-    
+
     yield
-    
+
     # Cleanup
     logger.info("Shutting down...")
     await db_manager.close()
     await es_manager.close()
+
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -62,6 +75,7 @@ if settings.AUDIT_LOG_ENABLED:
 if settings.RATE_LIMIT_ENABLED:
     app.add_middleware(RateLimitMiddleware)
 
+
 # Request timing middleware
 @app.middleware("http")
 async def add_process_time_header(request: Request, call_next):
@@ -70,6 +84,7 @@ async def add_process_time_header(request: Request, call_next):
     process_time = time.time() - start_time
     response.headers["X-Process-Time"] = str(process_time)
     return response
+
 
 # Exception handlers
 @app.exception_handler(Exception)
@@ -80,6 +95,7 @@ async def global_exception_handler(request: Request, exc: Exception):
         content={"detail": "Internal server error"}
     )
 
+
 # Include routers
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(suppliers.router, prefix="/api/suppliers", tags=["Suppliers"])
@@ -87,8 +103,11 @@ app.include_router(search.router, prefix="/api/search", tags=["Search"])
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
 app.include_router(campaigns.router, prefix="/api/campaigns", tags=["Email Campaigns"])
 app.include_router(managers.router, prefix="/api/managers", tags=["Managers"])
-app.include_router(supplier_requests.router, prefix="/api/supplier-requests", tags=["Supplier Requests"])  # НОВОЕ
+app.include_router(supplier_requests.router, prefix="/api/supplier-requests", tags=["Supplier Requests"])
 app.include_router(price_requests.router, prefix="/api/price-requests", tags=["Price Requests"])
+app.include_router(email_providers.router, prefix="/api/email-providers", tags=["Email Providers"])
+app.include_router(mail.router, prefix="/api/mail", tags=["Mail"])
+
 
 @app.get("/")
 async def root():
@@ -97,6 +116,7 @@ async def root():
         "version": settings.APP_VERSION,
         "status": "running"
     }
+
 
 @app.get("/health")
 async def health_check():

@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter, usePathname } from 'next/navigation'
-import { Home, Users, FileText, Settings, LogOut } from 'lucide-react'
+import { Home, Users, FileText, Settings, LogOut, Mail, Server } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 interface LayoutProps {
@@ -28,7 +28,7 @@ export default function LayoutWithSidebar({ children, pendingRequestsCount: exte
     try {
       const token = localStorage.getItem('access_token')
       if (!token) return
-      
+
       const response = await fetch(`${API_URL}/api/supplier-requests/?status=pending`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
@@ -58,18 +58,18 @@ export default function LayoutWithSidebar({ children, pendingRequestsCount: exte
     router.push('/login')
   }
 
-  const isAdmin = user?.role === 'admin'
-
   // Навигация с проверкой роли
   const allNavigation = [
     { name: 'Главная', href: '/', icon: Home, roles: ['admin', 'manager', 'viewer'] },
     { name: 'База поставщиков', href: '/suppliers', icon: Users, roles: ['admin', 'manager', 'viewer'] },
+    { name: 'Почта', href: '/mail', icon: Mail, roles: ['manager', 'admin'] },
     { name: 'Менеджеры', href: '/managers', icon: Settings, roles: ['admin'] },
+    { name: 'Настройки почты', href: '/settings/email-providers', icon: Server, roles: ['admin'] },
     { name: 'Заявки на проверку', href: '/requests', icon: FileText, badge: pendingCount, roles: ['admin'] }
   ]
 
   // Фильтруем навигацию по роли пользователя
-  const navigation = allNavigation.filter(item => 
+  const navigation = allNavigation.filter(item =>
     item.roles.includes(user?.role || 'viewer')
   )
 
@@ -111,7 +111,7 @@ export default function LayoutWithSidebar({ children, pendingRequestsCount: exte
         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
           {navigation.map((item) => {
             const Icon = item.icon
-            const isActive = pathname === item.href
+            const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
             return (
               <button
                 key={item.name}
