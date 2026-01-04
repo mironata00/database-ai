@@ -1,5 +1,5 @@
 from app.tasks.celery_app import celery_app
-from app.services.price_list_parser import price_list_parser
+from app.services.pricelist_parser import price_list_parser
 from app.core.elasticsearch import es_manager
 from app.core.database import db_manager
 from app.models.product_import import ProductImport, ImportStatus
@@ -115,6 +115,12 @@ def parse_pricelist_task(self, supplier_id: str, filename: str, file_content: by
                 async for session in db_manager.get_session():
                     db_products = []
                     for idx, product_data in enumerate(products_data):
+                        # Пропускаем товары без SKU (не сохраняем в БД)
+                        if not product_data.get("sku"):
+                            continue
+                        # Пропускаем товары без SKU (не сохраняем в БД)
+                        if not product_data.get("sku"):
+                            continue
                         product = Product(
                             supplier_id=supplier_id,
                             import_id=import_id,

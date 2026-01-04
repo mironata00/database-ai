@@ -32,13 +32,13 @@ async def get_mail_config(
 ):
     """Проверка настроек почты текущего пользователя"""
     result = await db.execute(
-        select(User).where(User.id == current_user.get("user_id"))
+        select(User).where(User.id == current_user.get("id"))
     )
     user = result.scalar_one_or_none()
-    
+
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
-    
+
     return {
         "has_smtp_configured": user.has_smtp_configured(),
         "has_imap_configured": user.has_imap_configured(),
@@ -55,13 +55,13 @@ async def get_folders(
 ):
     """Получить список папок почты"""
     result = await db.execute(
-        select(User).where(User.id == current_user.get("user_id"))
+        select(User).where(User.id == current_user.get("id"))
     )
     user = result.scalar_one_or_none()
-    
+
     if not user or not user.has_imap_configured():
         raise HTTPException(status_code=400, detail="IMAP не настроен")
-    
+
     try:
         client = IMAPClientPersonal(
             host=user.imap_host,
@@ -87,13 +87,13 @@ async def get_messages(
 ):
     """Получить список писем"""
     result = await db.execute(
-        select(User).where(User.id == current_user.get("user_id"))
+        select(User).where(User.id == current_user.get("id"))
     )
     user = result.scalar_one_or_none()
-    
+
     if not user or not user.has_imap_configured():
         raise HTTPException(status_code=400, detail="IMAP не настроен")
-    
+
     try:
         client = IMAPClientPersonal(
             host=user.imap_host,
@@ -122,13 +122,13 @@ async def get_message(
 ):
     """Получить содержимое письма"""
     result = await db.execute(
-        select(User).where(User.id == current_user.get("user_id"))
+        select(User).where(User.id == current_user.get("id"))
     )
     user = result.scalar_one_or_none()
-    
+
     if not user or not user.has_imap_configured():
         raise HTTPException(status_code=400, detail="IMAP не настроен")
-    
+
     try:
         client = IMAPClientPersonal(
             host=user.imap_host,
@@ -138,10 +138,10 @@ async def get_message(
             use_ssl=user.imap_use_ssl
         )
         message = client.get_message_body(folder=folder, msg_id=msg_id)
-        
+
         if "error" in message:
             raise HTTPException(status_code=404, detail=message["error"])
-        
+
         return message
     except HTTPException:
         raise
@@ -158,13 +158,13 @@ async def mark_as_read(
 ):
     """Пометить письмо как прочитанное"""
     result = await db.execute(
-        select(User).where(User.id == current_user.get("user_id"))
+        select(User).where(User.id == current_user.get("id"))
     )
     user = result.scalar_one_or_none()
-    
+
     if not user or not user.has_imap_configured():
         raise HTTPException(status_code=400, detail="IMAP не настроен")
-    
+
     try:
         client = IMAPClientPersonal(
             host=user.imap_host,
@@ -185,15 +185,15 @@ async def send_email(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    """Отправить письмо"""
+    """Отправить письмо и сохранить в папку Отправленные"""
     result = await db.execute(
-        select(User).where(User.id == current_user.get("user_id"))
+        select(User).where(User.id == current_user.get("id"))
     )
     user = result.scalar_one_or_none()
-    
+
     if not user or not user.has_smtp_configured():
         raise HTTPException(status_code=400, detail="SMTP не настроен")
-    
+
     try:
         smtp_config = {
             'host': user.smtp_host,
@@ -204,15 +204,28 @@ async def send_email(
             'from_name': user.smtp_from_name or user.full_name or user.smtp_user,
             'from_email': user.smtp_user
         }
-        
+
+        # IMAP конфиг для сохранения в "Отправленные"
+        imap_config = None
+        if user.has_imap_configured():
+            imap_config = {
+                'host': user.imap_host,
+                'port': user.imap_port,
+                'user': user.imap_user,
+                'password': user.imap_password,
+                'use_ssl': user.imap_use_ssl
+            }
+
         result = send_email_from_user(
             user_smtp_config=smtp_config,
             to_email=data.to,
             subject=data.subject,
             body=data.body,
-            reply_to=data.reply_to
+            reply_to=data.reply_to,
+            save_to_sent=True,
+            imap_config=imap_config
         )
-        
+
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка отправки: {str(e)}")

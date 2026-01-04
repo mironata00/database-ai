@@ -15,7 +15,6 @@ class IMAPClientPersonal:
         self.host = host
         self.port = port
         self.user = user
-        # Дешифруем пароль если он зашифрован
         self.password = encryption.decrypt(password) if password else ""
         self.use_ssl = use_ssl
     
@@ -40,24 +39,83 @@ class IMAPClientPersonal:
         imap = None
         try:
             imap = self.connect()
-            status, folders = imap.list()
+            status, folders_raw = imap.list()
             
             if status != 'OK':
-                return []
+                return ['INBOX']
             
             folder_names = []
-            for folder in folders:
-                if isinstance(folder, bytes):
-                    # Парсим имя папки
-                    parts = folder.decode().split(' "/" ')
-                    if len(parts) >= 2:
-                        folder_name = parts[-1].strip('"')
-                        folder_names.append(folder_name)
+            for folder_data in folders_raw:
+                if folder_data is None:
+                    continue
+                    
+                try:
+                    if isinstance(folder_data, bytes):
+                        folder_str = folder_data.decode('utf-8', errors='ignore')
+                    else:
+                        folder_str = str(folder_data)
+                    
+                    # Парсим строку вида: (\HasNoChildren) "/" "INBOX"
+                    # или (\HasNoChildren) "/" INBOX
+                    # или (\Noselect \HasChildren) "/" "[Gmail]"
+                    
+                    # Ищем последний элемент после разделителя
+                    if ' "/" ' in folder_str:
+                        parts = folder_str.split(' "/" ')
+                        if len(parts) >= 2:
+                            folder_name = parts[-1].strip().strip('"')
+                            if folder_name and not folder_name.startswith('['):
+                                folder_names.append(folder_name)
+                    elif ' "." ' in folder_str:
+                        parts = folder_str.split(' "." ')
+                        if len(parts) >= 2:
+                            folder_name = parts[-1].strip().strip('"')
+                            if folder_name and not folder_name.startswith('['):
+                                folder_names.append(folder_name)
+                    elif '"' in folder_str:
+                        # Пробуем извлечь имя папки из кавычек
+                        import re
+                        matches = re.findall(r'"([^"]+)"', folder_str)
+                        if matches:
+                            folder_name = matches[-1]
+                            if folder_name and folder_name not in ['/', '.']:
+                                folder_names.append(folder_name)
+                                
+                except Exception as e:
+                    logger.warning(f"Error parsing folder: {folder_data}, error: {e}")
+                    continue
             
+            # Если папок не найдено, возвращаем стандартный набор
+            if not folder_names:
+                folder_names = ['INBOX']
+            
+            # Убираем дубликаты и сортируем
+            folder_names = list(dict.fromkeys(folder_names))
+            
+            # Сортируем: INBOX первый, потом остальные
+            def sort_key(name):
+                priority = {
+                    'INBOX': 0,
+                    'Sent': 1,
+                    'Drafts': 2,
+                    'Trash': 3,
+                    'Spam': 4,
+                    'Junk': 5,
+                }
+                lower_name = name.lower()
+                for key, val in priority.items():
+                    if key.lower() in lower_name:
+                        return val
+                return 100
+            
+            folder_names.sort(key=sort_key)
+            
+            logger.info(f"Found {len(folder_names)} folders: {folder_names}")
             return folder_names
+            
         except Exception as e:
             logger.error(f"Error getting folders: {e}")
-            return []
+            return ['INBOX']
         finally:
             if imap:
                 try:
@@ -78,7 +136,13 @@ class IMAPClientPersonal:
         
         try:
             imap = self.connect()
-            status, _ = imap.select(folder, readonly=True)
+            
+            # Пробуем выбрать папку
+            try:
+                status, _ = imap.select(folder, readonly=True)
+            except:
+                # Если не получилось, пробуем с кавычками
+                status, _ = imap.select(f'"{folder}"', readonly=True)
             
             if status != 'OK':
                 logger.warning(f"Could not select folder {folder}")
@@ -123,17 +187,14 @@ class IMAPClientPersonal:
     
     def _fetch_message(self, imap, msg_id: bytes) -> Optional[Dict]:
         """Получение одного письма"""
-        # Получаем заголовки и флаги
         status, header_data = imap.fetch(msg_id, '(BODY.PEEK[HEADER] FLAGS)')
         if status != 'OK':
             return None
         
-        # Парсим флаги
         flags_raw = header_data[0][0] if header_data[0] else b''
         is_seen = b'\\Seen' in flags_raw
         is_flagged = b'\\Flagged' in flags_raw
         
-        # Парсим заголовки
         header_bytes = header_data[0][1] if len(header_data[0]) > 1 else b''
         email_message = email.message_from_bytes(header_bytes)
         
@@ -160,7 +221,11 @@ class IMAPClientPersonal:
         
         try:
             imap = self.connect()
-            imap.select(folder, readonly=True)
+            
+            try:
+                imap.select(folder, readonly=True)
+            except:
+                imap.select(f'"{folder}"', readonly=True)
             
             status, msg_data = imap.fetch(msg_id.encode(), '(RFC822)')
             
@@ -170,7 +235,6 @@ class IMAPClientPersonal:
             email_body = msg_data[0][1]
             email_message = email.message_from_bytes(email_body)
             
-            # Извлекаем тело
             body_text = ""
             body_html = ""
             attachments = []
@@ -241,7 +305,10 @@ class IMAPClientPersonal:
         imap = None
         try:
             imap = self.connect()
-            imap.select(folder)
+            try:
+                imap.select(folder)
+            except:
+                imap.select(f'"{folder}"')
             imap.store(msg_id.encode(), '+FLAGS', '\\Seen')
             return True
         except Exception as e:
@@ -260,7 +327,10 @@ class IMAPClientPersonal:
         imap = None
         try:
             imap = self.connect()
-            imap.select(folder)
+            try:
+                imap.select(folder)
+            except:
+                imap.select(f'"{folder}"')
             imap.store(msg_id.encode(), '-FLAGS', '\\Seen')
             return True
         except Exception as e:
@@ -291,14 +361,11 @@ class IMAPClientPersonal:
         return decoded_string
 
 
-# Обратная совместимость со старым кодом
-# Старый singleton клиент для системного IMAP (из .env)
-from app.core.config import settings
-
 class IMAPClientLegacy:
     """Легаси клиент для обратной совместимости"""
     
     def __init__(self):
+        from app.core.config import settings
         self.host = settings.EMAIL_IMAP_HOST
         self.port = settings.EMAIL_IMAP_PORT
         self.user = settings.EMAIL_IMAP_USER
@@ -326,5 +393,4 @@ class IMAPClientLegacy:
         return client.mark_as_read(folder, message_id)
 
 
-# Singleton для обратной совместимости
 imap_client = IMAPClientLegacy()
