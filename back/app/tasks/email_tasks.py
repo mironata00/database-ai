@@ -85,7 +85,7 @@ def check_imap_inbox():
     return {"status": "checked", "new_emails": 0}
 
 @shared_task(bind=True, max_retries=3)
-def send_price_request_email_personal(self, user_smtp_config: dict, to_email: str, subject: str, body: str, reply_to: str = None):
+def send_price_request_email_personal(self, user_smtp_config: dict, to_email: str, subject: str, body: str, reply_to: str = None, imap_config: dict = None):
     """Отправка письма с личной почты менеджера"""
     logger.info(f"Sending email from {user_smtp_config['from_email']} to {to_email}")
     
@@ -97,7 +97,9 @@ def send_price_request_email_personal(self, user_smtp_config: dict, to_email: st
             to_email=to_email,
             subject=subject,
             body=body,
-            reply_to=reply_to
+            reply_to=reply_to,
+            save_to_sent=True,
+            imap_config=imap_config
         )
         
         logger.info(f"Email sent successfully from {user_smtp_config['from_email']} to {to_email}")

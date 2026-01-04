@@ -64,6 +64,17 @@ async def send_price_requests(
         'from_name': user.smtp_from_name or user.full_name or "Database AI",
         'from_email': user.smtp_user
     }
+
+    # Формируем IMAP конфиг для сохранения в Отправленные
+    user_imap_config = None
+    if user.has_imap_configured():
+        user_imap_config = {
+            'host': user.imap_host,
+            'port': user.imap_port,
+            'user': user.imap_user,
+            'password': user.imap_password,
+            'use_ssl': user.imap_use_ssl
+        }
     
     results = []
     sent_count = 0
@@ -97,13 +108,14 @@ async def send_price_requests(
             continue
         
         try:
-            # Отправляем через Celery task
+            # Отправляем через Celery task (с сохранением в Отправленные)
             task = send_price_request_email_personal.delay(
                 user_smtp_config=user_smtp_config,
                 to_email=supplier.email,
                 subject=request.subject,
                 body=email_body,
-                reply_to=user.email
+                reply_to=user.email,
+                imap_config=user_imap_config
             )
             
             sent_count += 1

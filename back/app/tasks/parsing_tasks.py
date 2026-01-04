@@ -14,10 +14,13 @@ import asyncio
 
 logger = logging.getLogger(__name__)
 
+# ОПТИМИЗИРОВАННЫЕ НАСТРОЙКИ
+BATCH_SIZE = 500
+COMMIT_INTERVAL = 100
+
 
 @celery_app.task(name="app.tasks.parsing_tasks.parse_pricelist_task", bind=True)
 def parse_pricelist_task(self, supplier_id: str, filename: str, file_content: bytes):
-    # ИСПРАВЛЕНИЕ: Получаем или создаём event loop для текущего потока
     try:
         loop = asyncio.get_event_loop()
     except RuntimeError:
@@ -67,6 +70,7 @@ def parse_pricelist_task(self, supplier_id: str, filename: str, file_content: by
                 logger.info(f"Processing import record {import_id} for supplier {supplier_id}")
 
             # Парсим файл
+            logger.info(f"Parsing file {filename}...")
             parse_result = await price_list_parser.parse_file(tmp_file_path, filename)
 
             if not parse_result.get("success"):
@@ -106,21 +110,21 @@ def parse_pricelist_task(self, supplier_id: str, filename: str, file_content: by
 
                 await session.commit()
 
-            # Сохранение товаров
             products_data = parse_result.get("products", [])
+            total_products = len(products_data)
+            
+            logger.info(f"Total products parsed: {total_products}")
 
+            # Сохранение товаров в PostgreSQL (только те у которых есть SKU)
             if products_data:
-                logger.info(f"Saving {len(products_data)} products to PostgreSQL...")
+                logger.info(f"Saving products with SKU to PostgreSQL...")
 
                 async for session in db_manager.get_session():
                     db_products = []
                     for idx, product_data in enumerate(products_data):
-                        # Пропускаем товары без SKU (не сохраняем в БД)
                         if not product_data.get("sku"):
                             continue
-                        # Пропускаем товары без SKU (не сохраняем в БД)
-                        if not product_data.get("sku"):
-                            continue
+                            
                         product = Product(
                             supplier_id=supplier_id,
                             import_id=import_id,
@@ -140,22 +144,61 @@ def parse_pricelist_task(self, supplier_id: str, filename: str, file_content: by
                     await session.commit()
                     logger.info(f"✓ Saved {len(db_products)} products to PostgreSQL")
 
-            # Индексация в Elasticsearch
-            products = parse_result.get("products", [])
-            if products:
+            # === ОПТИМИЗИРОВАННАЯ ИНДЕКСАЦИЯ В ELASTICSEARCH ===
+            if products_data:
+                logger.info(f"Starting Elasticsearch indexing for {total_products} products...")
+                
+                # Получаем данные поставщика
                 async for session in db_manager.get_session():
                     result = await session.execute(
                         select(Supplier).where(Supplier.id == supplier_id)
                     )
                     supplier = result.scalar_one()
 
-                    for product in products:
-                        product["supplier_id"] = str(supplier_id)
-                        product["supplier_name"] = supplier.name
-                        product["supplier_inn"] = supplier.inn
+                # Удаляем старые данные поставщика ОДИН РАЗ
+                logger.info(f"Deleting old products for supplier {supplier_id}...")
+                await es_manager.delete_supplier_products(supplier_id)
 
-                es_result = await es_manager.bulk_index_products(products, supplier_id)
+                # Добавляем метаданные поставщика к каждому продукту
+                for product in products_data:
+                    product["supplier_id"] = str(supplier_id)
+                    product["supplier_name"] = supplier.name
+                    product["supplier_inn"] = supplier.inn
 
+                # Индексируем батчами
+                indexed_count = 0
+                batch = []
+                
+                for i, product in enumerate(products_data):
+                    batch.append(product)
+                    
+                    # Индексируем когда батч заполнен
+                    if len(batch) >= BATCH_SIZE:
+                        logger.info(f"Indexing batch of {len(batch)} products ({i+1}/{total_products})...")
+                        result = await es_manager.bulk_index_products(batch, supplier_id)
+                        indexed_count += result.get("success", 0)
+                        batch = []
+                        
+                        # Обновляем прогресс
+                        if (i + 1) % COMMIT_INTERVAL == 0:
+                            async for session in db_manager.get_session():
+                                result = await session.execute(
+                                    select(ProductImport).where(ProductImport.id == import_id)
+                                )
+                                import_record = result.scalar_one()
+                                import_record.total_products = total_products
+                                import_record.parsed_products = i + 1
+                                await session.commit()
+
+                # Индексируем остаток
+                if batch:
+                    logger.info(f"Indexing final batch of {len(batch)} products...")
+                    result = await es_manager.bulk_index_products(batch, supplier_id)
+                    indexed_count += result.get("success", 0)
+
+                logger.info(f"✓ Indexed {indexed_count}/{total_products} products to Elasticsearch")
+
+                # Финальное обновление статуса
                 async for session in db_manager.get_session():
                     result = await session.execute(
                         select(ProductImport).where(ProductImport.id == import_id)
@@ -163,30 +206,32 @@ def parse_pricelist_task(self, supplier_id: str, filename: str, file_content: by
                     import_record = result.scalar_one()
 
                     import_record.status = ImportStatus.COMPLETED
+                    import_record.total_products = total_products
+                    import_record.parsed_products = total_products
                     import_record.indexed_to_es = True
-                    import_record.es_indexed_count = es_result.get("success", 0)
+                    import_record.es_indexed_count = indexed_count
 
                     await session.commit()
 
+                # Обновляем теги поставщика
                 async for session in db_manager.get_session():
                     result = await session.execute(
                         select(Supplier).where(Supplier.id == supplier_id)
                     )
                     supplier = result.scalar_one()
-                    # ИСПРАВЛЕНИЕ: Добавляем новые теги к существующим (без дублей)
                     existing_tags = set(supplier.tags_array or [])
                     new_tags = set(parse_result.get("tags", []))
                     supplier.tags_array = list(existing_tags | new_tags)
                     await session.commit()
 
-            logger.info(f"Successfully parsed and indexed {len(products)} products for supplier {supplier_id}")
+            logger.info(f"✓ Successfully completed parsing and indexing")
 
             return {
                 "status": "success",
                 "supplier_id": supplier_id,
                 "import_id": str(import_id),
-                "products_count": len(products),
-                "indexed_count": es_result.get("success", 0) if "es_result" in locals() else 0,
+                "products_count": total_products,
+                "indexed_count": indexed_count,
                 "tags_count": len(parse_result.get("tags", [])),
                 "column_mapping": parse_result.get("detected_columns", {})
             }
@@ -220,5 +265,4 @@ def parse_pricelist_task(self, supplier_id: str, filename: str, file_content: by
             except:
                 pass
 
-    # ИСПРАВЛЕНИЕ: Используем существующий loop вместо asyncio.run()
     return loop.run_until_complete(async_parse())
