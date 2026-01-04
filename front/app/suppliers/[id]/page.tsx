@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import LayoutWithSidebar from '../../layout-with-sidebar'
-import { Mail, Phone, Globe, MapPin, Star, Upload, Download, X, Plus, Trash2, Palette, Edit2, Check } from 'lucide-react'
+import { Mail, Phone, Globe, MapPin, Star, Upload, Download, X, Plus, Trash2, Palette, Edit2, Check, ChevronDown, ChevronUp } from 'lucide-react'
 
 const AVAILABLE_COLORS = [
   { hex: '#3B82F6', name: 'Синий (Вода)', category: 'water' },
@@ -22,6 +22,8 @@ const STATUS_OPTIONS = [
   { value: 'BLACKLIST', label: 'Черный список', color: 'red' },
 ]
 
+const TAGS_PER_PAGE = 50
+
 export default function SupplierDetailPage() {
   const router = useRouter()
   const params = useParams()
@@ -36,6 +38,8 @@ export default function SupplierDetailPage() {
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [tags, setTags] = useState<string[]>([])
+  const [displayedTagsCount, setDisplayedTagsCount] = useState(TAGS_PER_PAGE)
+  const [tagsExpanded, setTagsExpanded] = useState(false)
   const [newTag, setNewTag] = useState('')
   const [showColorPicker, setShowColorPicker] = useState(false)
   const [userRole, setUserRole] = useState<string>('')
@@ -263,6 +267,20 @@ export default function SupplierDetailPage() {
     updateTags([])
   }
 
+  const loadMoreTags = () => {
+    setDisplayedTagsCount(prev => Math.min(prev + TAGS_PER_PAGE, tags.length))
+  }
+
+  const toggleTagsExpanded = () => {
+    if (tagsExpanded) {
+      setDisplayedTagsCount(TAGS_PER_PAGE)
+      setTagsExpanded(false)
+    } else {
+      setDisplayedTagsCount(tags.length)
+      setTagsExpanded(true)
+    }
+  }
+
   const handleFileUpload = async () => {
     if (!file || !isAdmin) return
     setUploading(true)
@@ -406,6 +424,9 @@ export default function SupplierDetailPage() {
     )
   }
 
+  const displayedTags = tags.slice(0, displayedTagsCount)
+  const hasMoreTags = displayedTagsCount < tags.length
+
   return (
     <LayoutWithSidebar>
       <div className="bg-white border-b" style={{ borderLeft: `3px solid ${supplier.color}` }}>
@@ -523,7 +544,6 @@ export default function SupplierDetailPage() {
               </div>
             </div>
 
-            {/* Остальной код без изменений - цвет, рейтинг, теги, прайс-листы */}
             {/* Цвет категории */}
             <div className="bg-white rounded-lg border p-6">
               <h2 className="text-lg font-semibold mb-4">Цвет категории</h2>
@@ -576,10 +596,10 @@ export default function SupplierDetailPage() {
               )}
             </div>
 
-            {/* Теги */}
+            {/* Теги - оптимизированное отображение */}
             <div className="bg-white rounded-lg border p-6">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold">Теги</h2>
+                <h2 className="text-lg font-semibold">Теги ({tags.length})</h2>
                 {isAdmin && tags.length > 0 && (
                   <button onClick={clearAllTags} className="text-xs text-red-600 hover:underline flex items-center space-x-1">
                     <Trash2 className="w-3 h-3" />
@@ -587,6 +607,7 @@ export default function SupplierDetailPage() {
                   </button>
                 )}
               </div>
+              
               {isAdmin && (
                 <div className="mb-3 flex space-x-2">
                   <input
@@ -602,18 +623,56 @@ export default function SupplierDetailPage() {
                   </button>
                 </div>
               )}
-              <div className="flex flex-wrap gap-2">
-                {tags.map((tag, i) => (
-                  <span key={i} className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm flex items-center space-x-1 group">
-                    <span>{tag}</span>
-                    {isAdmin && (
-                      <button onClick={() => removeTag(tag)} className="hover:text-red-600 opacity-0 group-hover:opacity-100">
-                        <X className="w-3 h-3" />
+
+              {tags.length > 0 ? (
+                <>
+                  <div className="flex flex-wrap gap-2 mb-3 max-h-[400px] overflow-y-auto">
+                    {displayedTags.map((tag, i) => (
+                      <span key={i} className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm flex items-center space-x-1 group">
+                        <span>{tag}</span>
+                        {isAdmin && (
+                          <button onClick={() => removeTag(tag)} className="hover:text-red-600 opacity-0 group-hover:opacity-100">
+                            <X className="w-3 h-3" />
+                          </button>
+                        )}
+                      </span>
+                    ))}
+                  </div>
+
+                  {tags.length > TAGS_PER_PAGE && (
+                    <div className="flex flex-col space-y-2">
+                      {hasMoreTags && !tagsExpanded && (
+                        <button 
+                          onClick={loadMoreTags}
+                          className="w-full px-4 py-2 text-sm text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 flex items-center justify-center space-x-1"
+                        >
+                          <span>Показать ещё {Math.min(TAGS_PER_PAGE, tags.length - displayedTagsCount)}</span>
+                          <ChevronDown className="w-4 h-4" />
+                        </button>
+                      )}
+                      
+                      <button 
+                        onClick={toggleTagsExpanded}
+                        className="w-full px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 flex items-center justify-center space-x-1"
+                      >
+                        {tagsExpanded ? (
+                          <>
+                            <span>Свернуть</span>
+                            <ChevronUp className="w-4 h-4" />
+                          </>
+                        ) : (
+                          <>
+                            <span>Показать все ({tags.length})</span>
+                            <ChevronDown className="w-4 h-4" />
+                          </>
+                        )}
                       </button>
-                    )}
-                  </span>
-                ))}
-              </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="text-sm text-gray-400 italic">Нет тегов</div>
+              )}
             </div>
 
             {/* Прайс-листы */}
@@ -635,59 +694,58 @@ export default function SupplierDetailPage() {
                             <div className="bg-blue-500 h-2 rounded-full transition-all" style={{width: `${uploadProgress}%`}} />
                           </div>
                           <div className="text-xs text-center mt-1 text-gray-600">{uploadProgress}%</div>
-                        </div>
-                      )}
-                      <button onClick={handleFileUpload} disabled={uploading} className="w-full px-4 py-2 bg-blue-500 text-white rounded-lg disabled:opacity-50">
-                        {uploading ? 'Загрузка...' : 'Загрузить'}
-                      </button>
+																											</div>
+																											)}
+																											<button onClick={handleFileUpload} disabled={uploading} className="w-full px-4 py-2 bg-blue-500 text-white rounded-lg disabled:opacity-50">
+																											{uploading ? 'Загрузка...' : 'Загрузить'}
+																											</button>
+																											</div>
+																											)}
+																											</div>
+																											)}
+																											<div className="space-y-2">
+            {imports.map((imp) => (
+              <div key={imp.id} className="p-3 bg-gray-50 rounded border">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex-1 truncate">
+                    <div className="text-sm font-medium truncate">{imp.file_name}</div>
+                    <div className="text-xs text-gray-500">{new Date(imp.created_at).toLocaleString('ru')}</div>
+                  </div>
+                  <div>
+                    {imp.status === 'processing' && <span className="text-xs text-yellow-600">⏳</span>}
+                    {imp.status === 'completed' && <span className="text-xs text-green-600">✓</span>}
+                    {imp.status === 'pending' && <span className="text-xs text-gray-600">⏸</span>}
+                  </div>
+                </div>
+
+                {imp.status === 'processing' && imp.total_products > 0 && (
+                  <div className="mb-2">
+                    <div className="w-full bg-gray-200 rounded-full h-1 mb-1">
+                      <div className="bg-green-500 h-1 rounded-full" style={{width: `${(imp.parsed_products / imp.total_products) * 100}%`}} />
                     </div>
+                    <div className="text-xs text-gray-600">{imp.parsed_products} / {imp.total_products}</div>
+                  </div>
+                )}
+
+                <div className="flex items-center space-x-3">
+                  <button onClick={() => downloadFile(imp.id, imp.file_name)} className="text-xs text-blue-600 hover:underline flex items-center space-x-1">
+                    <Download className="w-3 h-3" />
+                    <span>Скачать</span>
+                  </button>
+                  {isAdmin && (
+                    <button onClick={() => deleteImport(imp.id)} className="text-xs text-red-600 hover:underline flex items-center space-x-1">
+                      <Trash2 className="w-3 h-3" />
+                      <span>Удалить</span>
+                    </button>
                   )}
                 </div>
-              )}
-
-              <div className="space-y-2">
-                {imports.map((imp) => (
-                  <div key={imp.id} className="p-3 bg-gray-50 rounded border">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex-1 truncate">
-                        <div className="text-sm font-medium truncate">{imp.file_name}</div>
-                        <div className="text-xs text-gray-500">{new Date(imp.created_at).toLocaleString('ru')}</div>
-                      </div>
-                      <div>
-                        {imp.status === 'processing' && <span className="text-xs text-yellow-600">⏳</span>}
-                        {imp.status === 'completed' && <span className="text-xs text-green-600">✓</span>}
-                        {imp.status === 'pending' && <span className="text-xs text-gray-600">⏸</span>}
-                      </div>
-                    </div>
-
-                    {imp.status === 'processing' && imp.total_products > 0 && (
-                      <div className="mb-2">
-                        <div className="w-full bg-gray-200 rounded-full h-1 mb-1">
-                          <div className="bg-green-500 h-1 rounded-full" style={{width: `${(imp.parsed_products / imp.total_products) * 100}%`}} />
-                        </div>
-                        <div className="text-xs text-gray-600">{imp.parsed_products} / {imp.total_products}</div>
-                      </div>
-                    )}
-
-                    <div className="flex items-center space-x-3">
-                      <button onClick={() => downloadFile(imp.id, imp.file_name)} className="text-xs text-blue-600 hover:underline flex items-center space-x-1">
-                        <Download className="w-3 h-3" />
-                        <span>Скачать</span>
-                      </button>
-                      {isAdmin && (
-                        <button onClick={() => deleteImport(imp.id)} className="text-xs text-red-600 hover:underline flex items-center space-x-1">
-                          <Trash2 className="w-3 h-3" />
-                          <span>Удалить</span>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
               </div>
-            </div>
+            ))}
           </div>
         </div>
       </div>
-    </LayoutWithSidebar>
-  )
+    </div>
+  </div>
+</LayoutWithSidebar>
+)
 }
