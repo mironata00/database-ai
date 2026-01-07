@@ -222,3 +222,93 @@ def send_email_with_user_model(user, to_email: str, subject: str, body: str, rep
         save_to_sent=True,
         imap_config=imap_config
     )
+
+
+def send_email_from_user_with_attachments(
+    user_smtp_config: Dict,
+    to_email: str,
+    subject: str,
+    body: str,
+    attachments: list = None,
+    reply_to: str = None,
+    save_to_sent: bool = True,
+    imap_config: Dict = None
+) -> Dict:
+    """
+    Отправка email с вложениями с личной почты менеджера.
+    
+    attachments = [
+        {
+            'filename': 'document.pdf',
+            'content': b'...',
+            'content_type': 'application/pdf'
+        }
+    ]
+    """
+    from email.mime.base import MIMEBase
+    from email import encoders
+    
+    try:
+        # Дешифруем пароль
+        password = encryption.decrypt(user_smtp_config['password'])
+
+        # Создаём сообщение
+        msg = MIMEMultipart()
+        msg['From'] = f"{user_smtp_config['from_name']} <{user_smtp_config['from_email']}>"
+        msg['To'] = to_email
+        msg['Subject'] = subject
+        msg['Date'] = formatdate(localtime=True)
+        msg['Message-ID'] = f"<{int(time.time())}.{user_smtp_config['from_email']}>"
+
+        if reply_to:
+            msg['Reply-To'] = reply_to
+            msg['In-Reply-To'] = reply_to
+            msg['References'] = reply_to
+
+        # Добавляем тело письма
+        msg.attach(MIMEText(body, 'plain', 'utf-8'))
+
+        # Добавляем вложения
+        if attachments:
+            for attachment in attachments:
+                part = MIMEBase('application', 'octet-stream')
+                part.set_payload(attachment['content'])
+                encoders.encode_base64(part)
+                part.add_header(
+                    'Content-Disposition',
+                    f'attachment; filename="{attachment["filename"]}"'
+                )
+                if 'content_type' in attachment:
+                    part.set_type(attachment['content_type'])
+                msg.attach(part)
+
+        # Подключение к SMTP и отправка
+        if user_smtp_config.get('use_tls', True):
+            server = smtplib.SMTP(user_smtp_config['host'], user_smtp_config['port'])
+            server.starttls()
+        else:
+            server = smtplib.SMTP_SSL(user_smtp_config['host'], user_smtp_config['port'])
+
+        server.login(user_smtp_config['user'], password)
+        server.send_message(msg)
+        server.quit()
+
+        logger.info(f"Email with {len(attachments) if attachments else 0} attachments sent to {to_email}")
+
+        # Сохраняем в "Отправленные"
+        if save_to_sent and imap_config:
+            try:
+                save_to_sent_folder(msg, imap_config)
+            except Exception as e:
+                logger.warning(f"Failed to save to Sent folder: {e}")
+
+        return {
+            "success": True,
+            "from_email": user_smtp_config['from_email'],
+            "to_email": to_email,
+            "attachments_count": len(attachments) if attachments else 0
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to send email: {e}")
+        raise Exception(f"Failed to send email: {str(e)}")

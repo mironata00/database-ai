@@ -3,10 +3,11 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import LayoutWithSidebar from '../layout-with-sidebar'
-import { 
-  Mail, Inbox, Send, RefreshCw, Search, Star, 
+import {
+  Mail, Inbox, Send, RefreshCw, Search, Star,
   Trash2, Archive, MailOpen, Paperclip, AlertCircle,
-  ChevronLeft, ChevronRight, Settings, FileText, Edit3
+  ChevronLeft, ChevronRight, Settings, FileText, Edit3,
+  Reply, X, Upload, Download, Image, File
 } from 'lucide-react'
 
 interface EmailMessage {
@@ -30,10 +31,14 @@ interface EmailBody {
   date: string
   body_text: string
   body_html: string
-  attachments: Array<{filename: string, content_type: string, size: number}>
+  attachments: Array<{
+    filename: string
+    content_type: string
+    size: number
+    download_index: number
+  }>
 }
 
-// Словарь для перевода названий папок
 const folderTranslations: { [key: string]: string } = {
   'INBOX': 'Входящие',
   'Sent': 'Отправленные',
@@ -54,7 +59,6 @@ const folderTranslations: { [key: string]: string } = {
   'Starred': 'Помеченные',
 }
 
-// Иконки для папок
 const folderIcons: { [key: string]: any } = {
   'INBOX': Inbox,
   'Входящие': Inbox,
@@ -87,9 +91,10 @@ export default function MailPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [hasEmailConfig, setHasEmailConfig] = useState(false)
   const [showComposeModal, setShowComposeModal] = useState(false)
+  const [replyTo, setReplyTo] = useState<EmailBody | null>(null)
 
-  const API_URL = typeof window !== 'undefined' 
-    ? `${window.location.protocol}//${window.location.host}` 
+  const API_URL = typeof window !== 'undefined'
+    ? `${window.location.protocol}//${window.location.host}`
     : 'http://localhost'
 
   useEffect(() => {
@@ -99,22 +104,22 @@ export default function MailPage() {
   const checkAuth = () => {
     const token = localStorage.getItem('access_token')
     const userData = localStorage.getItem('user')
-    
+
     if (!token) {
       router.push('/login')
       return
     }
-    
+
     if (userData) {
       const user = JSON.parse(userData)
       setUser(user)
-      
+
       if (user.role === 'viewer') {
         alert('Почта недоступна для наблюдателей')
         router.push('/')
         return
       }
-      
+
       checkEmailConfig()
     }
   }
@@ -125,11 +130,11 @@ export default function MailPage() {
       const response = await fetch(`${API_URL}/api/mail/config`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
-      
+
       if (response.ok) {
         const data = await response.json()
         setHasEmailConfig(data.has_imap_configured)
-        
+
         if (data.has_imap_configured) {
           fetchFolders()
           fetchMessages()
@@ -151,7 +156,7 @@ export default function MailPage() {
       const response = await fetch(`${API_URL}/api/mail/folders`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
-      
+
       if (response.ok) {
         const data = await response.json()
         if (data.folders && data.folders.length > 0) {
@@ -166,16 +171,16 @@ export default function MailPage() {
   const fetchMessages = async (folder: string = currentFolder) => {
     setRefreshing(true)
     setError('')
-    
+
     try {
       const token = localStorage.getItem('access_token')
       const response = await fetch(
-        `${API_URL}/api/mail/messages?folder=${encodeURIComponent(folder)}&limit=50`, 
+        `${API_URL}/api/mail/messages?folder=${encodeURIComponent(folder)}&limit=50`,
         {
           headers: { 'Authorization': `Bearer ${token}` }
         }
       )
-      
+
       if (response.ok) {
         const data = await response.json()
         setMessages(data.messages || [])
@@ -192,7 +197,7 @@ export default function MailPage() {
 
   const fetchMessageBody = async (msgId: string) => {
     setLoadingMessage(true)
-    
+
     try {
       const token = localStorage.getItem('access_token')
       const response = await fetch(
@@ -201,11 +206,11 @@ export default function MailPage() {
           headers: { 'Authorization': `Bearer ${token}` }
         }
       )
-      
+
       if (response.ok) {
         const data = await response.json()
         setSelectedMessage(data)
-        
+
         if (!messages.find(m => m.id === msgId)?.is_read) {
           markAsRead(msgId)
         }
@@ -222,14 +227,14 @@ export default function MailPage() {
       const token = localStorage.getItem('access_token')
       await fetch(`${API_URL}/api/mail/messages/${msgId}/read`, {
         method: 'POST',
-        headers: { 
+        headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({ folder: currentFolder })
       })
-      
-      setMessages(prev => prev.map(m => 
+
+      setMessages(prev => prev.map(m =>
         m.id === msgId ? { ...m, is_read: true } : m
       ))
     } catch (err) {
@@ -243,13 +248,44 @@ export default function MailPage() {
     fetchMessages(folder)
   }
 
+  const handleReply = () => {
+    if (selectedMessage) {
+      setReplyTo(selectedMessage)
+      setShowComposeModal(true)
+    }
+  }
+
+  const downloadAttachment = async (msgId: string, attachmentIndex: number, filename: string) => {
+    try {
+      const token = localStorage.getItem('access_token')
+      const response = await fetch(
+        `${API_URL}/api/mail/messages/${msgId}/attachments/${attachmentIndex}?folder=${encodeURIComponent(currentFolder)}`,
+        {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }
+      )
+
+      if (response.ok) {
+        const blob = await response.blob()
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = filename
+        document.body.appendChild(a)
+        a.click()
+        window.URL.revokeObjectURL(url)
+        document.body.removeChild(a)
+      }
+    } catch (err) {
+      console.error('Error downloading attachment:', err)
+    }
+  }
+
   const translateFolderName = (folder: string): string => {
-    // Проверяем прямой перевод
     if (folderTranslations[folder]) {
       return folderTranslations[folder]
     }
-    
-    // Проверяем частичное совпадение
+
     const lowerFolder = folder.toLowerCase()
     if (lowerFolder.includes('sent')) return 'Отправленные'
     if (lowerFolder.includes('draft')) return 'Черновики'
@@ -257,25 +293,12 @@ export default function MailPage() {
     if (lowerFolder.includes('spam') || lowerFolder.includes('junk')) return 'Спам'
     if (lowerFolder.includes('archive')) return 'Архив'
     if (lowerFolder.includes('inbox')) return 'Входящие'
-    
-    // Пробуем декодировать UTF-7 (для русских названий)
-    if (folder.includes('&')) {
-      try {
-        // Простая проверка на известные UTF-7 паттерны
-        if (folder.includes('BB4EQgQ')) return 'Отправленные'
-        if (folder.includes('BCcENQRABD0E')) return 'Черновики'
-        if (folder.includes('BBoEPgRABDcEOAQ9BDA')) return 'Корзина'
-      } catch {
-        // Игнорируем ошибки декодирования
-      }
-    }
-    
-    // Убираем префикс INBOX. если есть
+
     if (folder.startsWith('INBOX.')) {
       const subFolder = folder.substring(6)
       return translateFolderName(subFolder)
     }
-    
+
     return folder
   }
 
@@ -290,7 +313,7 @@ export default function MailPage() {
       const date = new Date(dateStr)
       const now = new Date()
       const isToday = date.toDateString() === now.toDateString()
-      
+
       if (isToday) {
         return date.toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' })
       }
@@ -313,9 +336,14 @@ export default function MailPage() {
   const filteredMessages = messages.filter(m => {
     if (!searchQuery) return true
     const q = searchQuery.toLowerCase()
-    return m.subject.toLowerCase().includes(q) || 
+    return m.subject.toLowerCase().includes(q) ||
            m.from.toLowerCase().includes(q)
   })
+
+  const getFileIcon = (contentType: string) => {
+    if (contentType.startsWith('image/')) return Image
+    return File
+  }
 
   if (loading) {
     return (
@@ -359,7 +387,6 @@ export default function MailPage() {
   return (
     <LayoutWithSidebar>
       <div className="h-screen flex flex-col bg-gray-50">
-        {/* Header */}
         <div className="bg-white border-b px-4 py-3 flex items-center justify-between">
           <div className="flex items-center space-x-4">
             <h1 className="text-xl font-semibold">Почта</h1>
@@ -378,18 +405,17 @@ export default function MailPage() {
         </div>
 
         <div className="flex-1 flex overflow-hidden">
-          {/* Sidebar - Folders */}
           <div className="w-52 bg-white border-r flex flex-col">
             <div className="p-3">
-              <button 
-                onClick={() => setShowComposeModal(true)}
+              <button
+                onClick={() => { setReplyTo(null); setShowComposeModal(true) }}
                 className="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 flex items-center justify-center space-x-2"
               >
                 <Send className="w-4 h-4" />
                 <span>Написать</span>
               </button>
             </div>
-            
+
             <nav className="flex-1 px-2 py-2 space-y-1 overflow-y-auto">
               {folders.map(folder => {
                 const IconComponent = getFolderIcon(folder)
@@ -399,8 +425,8 @@ export default function MailPage() {
                     key={folder}
                     onClick={() => handleFolderChange(folder)}
                     className={`w-full flex items-center space-x-2 px-3 py-2 rounded-lg text-left text-sm ${
-                      currentFolder === folder 
-                        ? 'bg-blue-50 text-blue-700' 
+                      currentFolder === folder
+                        ? 'bg-blue-50 text-blue-700'
                         : 'hover:bg-gray-100'
                     }`}
                   >
@@ -412,9 +438,7 @@ export default function MailPage() {
             </nav>
           </div>
 
-          {/* Message List */}
           <div className="w-80 bg-white border-r flex flex-col">
-            {/* Search */}
             <div className="p-3 border-b">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
@@ -428,7 +452,6 @@ export default function MailPage() {
               </div>
             </div>
 
-            {/* Folder title */}
             <div className="px-3 py-2 border-b bg-gray-50">
               <span className="font-medium text-sm text-gray-700">
                 {translateFolderName(currentFolder)}
@@ -438,12 +461,11 @@ export default function MailPage() {
               </span>
             </div>
 
-            {/* Messages */}
             <div className="flex-1 overflow-y-auto">
               {error && (
                 <div className="p-4 text-center text-red-500 text-sm">{error}</div>
               )}
-              
+
               {filteredMessages.length === 0 && !error && (
                 <div className="p-8 text-center text-gray-500">
                   <Mail className="w-12 h-12 mx-auto mb-2 opacity-50" />
@@ -475,6 +497,9 @@ export default function MailPage() {
                       <p className={`text-sm truncate ${!msg.is_read ? 'font-medium' : 'text-gray-600'}`}>
                         {msg.subject || '(без темы)'}
                       </p>
+                      {msg.has_attachments && (
+                        <Paperclip className="w-3 h-3 text-gray-400 mt-1" />
+                      )}
                     </div>
                   </div>
                 </button>
@@ -482,7 +507,6 @@ export default function MailPage() {
             </div>
           </div>
 
-          {/* Message View */}
           <div className="flex-1 bg-white flex flex-col">
             {loadingMessage ? (
               <div className="flex-1 flex items-center justify-center">
@@ -490,11 +514,19 @@ export default function MailPage() {
               </div>
             ) : selectedMessage ? (
               <>
-                {/* Message Header */}
                 <div className="p-4 border-b">
-                  <h2 className="text-xl font-semibold mb-2">
-                    {selectedMessage.subject || '(без темы)'}
-                  </h2>
+                  <div className="flex items-start justify-between mb-2">
+                    <h2 className="text-xl font-semibold flex-1">
+                      {selectedMessage.subject || '(без темы)'}
+                    </h2>
+                    <button
+                      onClick={handleReply}
+                      className="ml-4 px-3 py-1.5 border rounded-lg hover:bg-gray-50 flex items-center space-x-1 text-sm"
+                    >
+                      <Reply className="w-4 h-4" />
+                      <span>Ответить</span>
+                    </button>
+                  </div>
                   <div className="flex items-start justify-between">
                     <div>
                       <p className="text-sm">
@@ -516,27 +548,38 @@ export default function MailPage() {
                       {formatDate(selectedMessage.date)}
                     </span>
                   </div>
-                  
-                  {/* Attachments */}
+
                   {selectedMessage.attachments && selectedMessage.attachments.length > 0 && (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {selectedMessage.attachments.map((att, idx) => (
-                        <div key={idx} className="flex items-center space-x-1 bg-gray-100 px-2 py-1 rounded text-sm">
-                          <Paperclip className="w-3 h-3" />
-                          <span>{att.filename}</span>
-                          <span className="text-gray-400">
-                            ({Math.round(att.size / 1024)}KB)
-                          </span>
-                        </div>
-                      ))}
+                    <div className="mt-3 space-y-2">
+                      <div className="text-sm font-medium text-gray-700">
+                        Вложения ({selectedMessage.attachments.length}):
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {selectedMessage.attachments.map((att, idx) => {
+                          const IconComponent = getFileIcon(att.content_type)
+                          return (
+                            <button
+                              key={idx}
+                              onClick={() => downloadAttachment(selectedMessage.id, att.download_index, att.filename)}
+                              className="flex items-center space-x-2 bg-gray-100 hover:bg-gray-200 px-3 py-2 rounded-lg text-sm"
+                            >
+                              <IconComponent className="w-4 h-4 text-gray-600" />
+                              <span className="truncate max-w-xs">{att.filename}</span>
+                              <span className="text-gray-400 text-xs">
+                                ({Math.round(att.size / 1024)}KB)
+                              </span>
+                              <Download className="w-3 h-3 text-gray-500" />
+                            </button>
+                          )
+                        })}
+                      </div>
                     </div>
                   )}
                 </div>
 
-                {/* Message Body */}
                 <div className="flex-1 overflow-auto p-4">
                   {selectedMessage.body_html ? (
-                    <div 
+                    <div
                       className="prose max-w-none"
                       dangerouslySetInnerHTML={{ __html: selectedMessage.body_html }}
                     />
@@ -559,28 +602,44 @@ export default function MailPage() {
         </div>
       </div>
 
-      {/* Compose Modal */}
       {showComposeModal && (
-        <ComposeModal 
-          onClose={() => setShowComposeModal(false)}
+        <ComposeModal
+          onClose={() => { setShowComposeModal(false); setReplyTo(null) }}
           onSent={() => {
             setShowComposeModal(false)
+            setReplyTo(null)
             fetchMessages()
           }}
           apiUrl={API_URL}
+          replyTo={replyTo}
         />
       )}
     </LayoutWithSidebar>
   )
 }
 
-// Компонент модального окна для написания письма
-function ComposeModal({ onClose, onSent, apiUrl }: { onClose: () => void, onSent: () => void, apiUrl: string }) {
-  const [to, setTo] = useState('')
-  const [subject, setSubject] = useState('')
+function ComposeModal({ onClose, onSent, apiUrl, replyTo }: { 
+  onClose: () => void
+  onSent: () => void
+  apiUrl: string
+  replyTo: EmailBody | null
+}) {
+  const [to, setTo] = useState(replyTo ? replyTo.from.match(/<(.+?)>/)?.[1] || replyTo.from : '')
+  const [subject, setSubject] = useState(replyTo ? `Re: ${replyTo.subject}` : '')
   const [body, setBody] = useState('')
+  const [files, setFiles] = useState<File[]>([])
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      setFiles(prev => [...prev, ...Array.from(e.target.files!)])
+    }
+  }
+
+  const removeFile = (index: number) => {
+    setFiles(prev => prev.filter((_, i) => i !== index))
+  }
 
   const handleSend = async () => {
     if (!to || !subject || !body) {
@@ -593,13 +652,25 @@ function ComposeModal({ onClose, onSent, apiUrl }: { onClose: () => void, onSent
 
     try {
       const token = localStorage.getItem('access_token')
+      const formData = new FormData()
+      formData.append('to', to)
+      formData.append('subject', subject)
+      formData.append('body', body)
+      
+      if (replyTo?.message_id) {
+        formData.append('reply_to', replyTo.message_id)
+      }
+
+      files.forEach(file => {
+        formData.append('files', file)
+      })
+
       const response = await fetch(`${apiUrl}/api/mail/send`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
+          'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ to, subject, body })
+        body: formData
       })
 
       if (response.ok) {
@@ -617,11 +688,13 @@ function ComposeModal({ onClose, onSent, apiUrl }: { onClose: () => void, onSent
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+      <div className="bg-white rounded-lg w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
         <div className="p-4 border-b flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Новое письмо</h2>
+          <h2 className="text-lg font-semibold">
+            {replyTo ? 'Ответить' : 'Новое письмо'}
+          </h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            ✕
+            <X className="w-5 h-5" />
           </button>
         </div>
 
@@ -659,37 +732,82 @@ function ComposeModal({ onClose, onSent, apiUrl }: { onClose: () => void, onSent
             <textarea
               value={body}
               onChange={(e) => setBody(e.target.value)}
-              rows={10}
+              rows={12}
               className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
               placeholder="Текст сообщения..."
             />
           </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-2">Вложения</label>
+            <input
+              type="file"
+              onChange={handleFileChange}
+              multiple
+              className="hidden"
+              id="file-upload"
+            />
+            <label
+              htmlFor="file-upload"
+              className="inline-flex items-center px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg cursor-pointer text-sm"
+            >
+              <Upload className="w-4 h-4 mr-2" />
+              Добавить файлы
+            </label>
+            
+            {files.length > 0 && (
+              <div className="mt-3 space-y-2">
+                {files.map((file, idx) => (
+                  <div key={idx} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                    <div className="flex items-center space-x-2 flex-1 min-w-0">
+                      <Paperclip className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                      <span className="text-sm truncate">{file.name}</span>
+                      <span className="text-xs text-gray-400 flex-shrink-0">
+                        ({(file.size / 1024).toFixed(1)} KB)
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => removeFile(idx)}
+                      className="ml-2 p-1 text-red-500 hover:bg-red-50 rounded"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
-        <div className="p-4 border-t flex justify-end space-x-3">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 border rounded-lg hover:bg-gray-50"
-          >
-            Отмена
-          </button>
-          <button
-            onClick={handleSend}
-            disabled={sending}
-            className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 flex items-center space-x-2"
-          >
-            {sending ? (
-              <>
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                <span>Отправка...</span>
-              </>
-            ) : (
-              <>
-                <Send className="w-4 h-4" />
-                <span>Отправить</span>
-              </>
-            )}
-          </button>
+        <div className="p-4 border-t flex justify-between items-center">
+          <div className="text-sm text-gray-500">
+            {files.length > 0 && `${files.length} файл(ов)`}
+          </div>
+          <div className="flex space-x-3">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 border rounded-lg hover:bg-gray-50"
+            >
+              Отмена
+            </button>
+            <button
+              onClick={handleSend}
+              disabled={sending}
+              className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 flex items-center space-x-2"
+            >
+              {sending ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  <span>Отправка...</span>
+                </>
+              ) : (
+                <>
+                  <Send className="w-4 h-4" />
+                  <span>Отправить</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import LayoutWithSidebar from '../layout-with-sidebar'
-import { Plus, Search, Edit, Trash2, Star, Ban } from 'lucide-react'
+import { Plus, Search, Edit, Trash2, Star } from 'lucide-react'
 
 interface Supplier {
   id: string
@@ -24,6 +24,8 @@ export default function SuppliersPage() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
+  const [useCategoryColors, setUseCategoryColors] = useState(true)
+  const [userRole, setUserRole] = useState<string>('')
   const API_URL = typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.host}` : 'http://localhost'
 
   useEffect(() => { checkAuth() }, [])
@@ -31,7 +33,23 @@ export default function SuppliersPage() {
   const checkAuth = () => {
     const token = localStorage.getItem('access_token')
     if (!token) { router.push('/login'); return }
+    const userData = localStorage.getItem('user')
+    const user = userData ? JSON.parse(userData) : null
+    setUserRole(user?.role || '')
+    fetchCategorySettings()
     fetchSuppliers()
+  }
+
+  const fetchCategorySettings = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/suppliers/categories`)
+      if (response.ok) {
+        const data = await response.json()
+        setUseCategoryColors(data.use_category_colors || false)
+      }
+    } catch (error) {
+      console.error('Error:', error)
+    }
   }
 
   const fetchSuppliers = async () => {
@@ -94,13 +112,15 @@ export default function SuppliersPage() {
           <div className="max-w-7xl mx-auto px-4 py-4">
             <div className="flex items-center justify-between">
               <h1 className="text-xl font-semibold">База поставщиков</h1>
-              <button
-                onClick={() => router.push('/suppliers/add')}
-                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 flex items-center space-x-2"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Добавить поставщика</span>
-              </button>
+              {userRole === 'admin' && (
+                <button
+                  onClick={() => router.push('/suppliers/add')}
+                  className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 flex items-center space-x-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Добавить поставщика</span>
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -152,7 +172,7 @@ export default function SuppliersPage() {
                         <div className="flex items-center">
                           <div
                             className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-semibold"
-                            style={{ backgroundColor: supplier.color }}
+                            style={useCategoryColors ? { backgroundColor: supplier.color } : { backgroundColor: '#6B7280' }}
                           >
                             {supplier.name.charAt(0)}
                           </div>
@@ -189,22 +209,32 @@ export default function SuppliersPage() {
                         )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <div className="flex items-center justify-end space-x-2">
+                        {userRole === 'admin' ? (
+                          <div className="flex items-center justify-end space-x-2">
+                            <button
+                              onClick={() => router.push(`/suppliers/${supplier.id}`)}
+                              className="text-blue-600 hover:text-blue-900 p-2 hover:bg-blue-50 rounded"
+                              title="Редактировать"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => deleteSupplier(supplier.id, supplier.name)}
+                              className="text-red-600 hover:text-red-900 p-2 hover:bg-red-50 rounded"
+                              title="Удалить"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ) : (
                           <button
                             onClick={() => router.push(`/suppliers/${supplier.id}`)}
                             className="text-blue-600 hover:text-blue-900 p-2 hover:bg-blue-50 rounded"
-                            title="Редактировать"
+                            title="Просмотр"
                           >
                             <Edit className="w-4 h-4" />
                           </button>
-                          <button
-                            onClick={() => deleteSupplier(supplier.id, supplier.name)}
-                            className="text-red-600 hover:text-red-900 p-2 hover:bg-red-50 rounded"
-                            title="Удалить"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
+                        )}
                       </td>
                     </tr>
                   ))}

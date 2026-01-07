@@ -1,14 +1,19 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import List, Optional
+import io
+import uuid
+from datetime import datetime
 
 from app.core.database import get_db
 from app.models.user import User
 from app.api.auth import get_current_user
 from app.utils.imap_client import IMAPClientPersonal
-from app.utils.email_sender_personal import send_email_from_user
+from app.utils.email_sender_personal import send_email_from_user_with_attachments
 from app.utils.encryption import encryption
+from app.utils.minio_client import minio_client
 from pydantic import BaseModel
 
 router = APIRouter()
@@ -120,7 +125,7 @@ async def get_message(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    """Получить содержимое письма"""
+    """Получить содержимое письма с сохранением вложений в MinIO"""
     result = await db.execute(
         select(User).where(User.id == current_user.get("id"))
     )
@@ -142,11 +147,84 @@ async def get_message(
         if "error" in message:
             raise HTTPException(status_code=404, detail=message["error"])
 
+        # Сохраняем вложения в MinIO и заменяем на ссылки
+        if message.get('attachments'):
+            for idx, attachment in enumerate(message['attachments']):
+                # Генерируем уникальное имя файла
+                file_id = str(uuid.uuid4())
+                timestamp = datetime.now().strftime('%Y%m%d')
+                object_name = f"{timestamp}/{user.id}/{msg_id}/{file_id}_{attachment['filename']}"
+                
+                # Получаем содержимое вложения
+                attachment_data = client.get_attachment(folder=folder, msg_id=msg_id, attachment_index=idx)
+                
+                if attachment_data and attachment_data.get('content'):
+                    # Сохраняем в MinIO
+                    success = minio_client.upload_file(
+                        bucket='email-attachments',
+                        object_name=object_name,
+                        data=attachment_data['content'],
+                        content_type=attachment.get('content_type', 'application/octet-stream')
+                    )
+                    
+                    if success:
+                        # Добавляем информацию для скачивания
+                        attachment['minio_path'] = object_name
+                        attachment['download_index'] = idx
+
         return message
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка получения письма: {str(e)}")
+
+
+@router.get("/messages/{msg_id}/attachments/{attachment_index}")
+async def download_attachment(
+    msg_id: str,
+    attachment_index: int,
+    folder: str = Query("INBOX"),
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """Скачать вложение из письма"""
+    result = await db.execute(
+        select(User).where(User.id == current_user.get("id"))
+    )
+    user = result.scalar_one_or_none()
+
+    if not user or not user.has_imap_configured():
+        raise HTTPException(status_code=400, detail="IMAP не настроен")
+
+    try:
+        client = IMAPClientPersonal(
+            host=user.imap_host,
+            port=user.imap_port,
+            user=user.imap_user,
+            password=user.imap_password,
+            use_ssl=user.imap_use_ssl
+        )
+        
+        attachment_data = client.get_attachment(
+            folder=folder, 
+            msg_id=msg_id, 
+            attachment_index=attachment_index
+        )
+
+        if not attachment_data:
+            raise HTTPException(status_code=404, detail="Вложение не найдено")
+
+        return StreamingResponse(
+            io.BytesIO(attachment_data['content']),
+            media_type=attachment_data['content_type'],
+            headers={
+                'Content-Disposition': f'attachment; filename="{attachment_data["filename"]}"'
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка скачивания вложения: {str(e)}")
 
 
 @router.post("/messages/{msg_id}/read")
@@ -181,11 +259,15 @@ async def mark_as_read(
 
 @router.post("/send")
 async def send_email(
-    data: SendEmailRequest,
+    to: str = Form(...),
+    subject: str = Form(...),
+    body: str = Form(...),
+    reply_to: Optional[str] = Form(None),
+    files: List[UploadFile] = File(default=[]),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    """Отправить письмо и сохранить в папку Отправленные"""
+    """Отправить письмо с вложениями"""
     result = await db.execute(
         select(User).where(User.id == current_user.get("id"))
     )
@@ -216,15 +298,49 @@ async def send_email(
                 'use_ssl': user.imap_use_ssl
             }
 
-        result = send_email_from_user(
+        # Подготовка вложений и сохранение в MinIO
+        attachments = []
+        minio_paths = []
+        
+        for file in files:
+            content = await file.read()
+            
+            # Сохраняем в MinIO
+            file_id = str(uuid.uuid4())
+            timestamp = datetime.now().strftime('%Y%m%d')
+            object_name = f"sent/{timestamp}/{user.id}/{file_id}_{file.filename}"
+            
+            minio_client.upload_file(
+                bucket='email-attachments',
+                object_name=object_name,
+                data=content,
+                content_type=file.content_type or 'application/octet-stream'
+            )
+            
+            minio_paths.append({
+                'filename': file.filename,
+                'minio_path': object_name,
+                'size': len(content)
+            })
+            
+            attachments.append({
+                'filename': file.filename,
+                'content': content,
+                'content_type': file.content_type or 'application/octet-stream'
+            })
+
+        result = send_email_from_user_with_attachments(
             user_smtp_config=smtp_config,
-            to_email=data.to,
-            subject=data.subject,
-            body=data.body,
-            reply_to=data.reply_to,
+            to_email=to,
+            subject=subject,
+            body=body,
+            attachments=attachments,
+            reply_to=reply_to,
             save_to_sent=True,
             imap_config=imap_config
         )
+        
+        result['minio_attachments'] = minio_paths
 
         return result
     except Exception as e:

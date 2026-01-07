@@ -3,7 +3,7 @@ from app.models.product_import import ProductImport
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.elasticsearch import es_manager
-from app.core.config import settings
+from app.core.config import settings, SUPPLIER_CATEGORIES, MULTI_CATEGORY_COLOR
 from app.schemas.supplier import SupplierCreate, SupplierUpdate, SupplierResponse, SupplierListResponse
 from app.models.supplier import Supplier
 from app.tasks.parsing_tasks import parse_pricelist_task
@@ -12,6 +12,32 @@ from typing import List, Optional
 from uuid import UUID
 
 router = APIRouter()
+
+@router.get("/categories")
+async def get_supplier_categories():
+    """Получить список доступных категорий поставщиков с цветами"""
+    return {
+        "categories": SUPPLIER_CATEGORIES,
+        "multi_category_color": MULTI_CATEGORY_COLOR,
+        "use_category_colors": settings.USE_CATEGORY_COLORS
+    }
+
+def get_supplier_display_color(categories: List[str]) -> str:
+    """
+    Вычислить цвет для отображения поставщика на основе направлений
+    
+    Логика:
+    - 0 категорий → серый (#6B7280)
+    - 1 категория → цвет этой категории
+    - 2+ категории → черный (#000000)
+    """
+    if not categories or len(categories) == 0:
+        return '#6B7280'  # Серый для поставщиков без направления
+    elif len(categories) == 1:
+        category_key = categories[0]
+        return SUPPLIER_CATEGORIES.get(category_key, {}).get('color', '#6B7280')
+    else:
+        return MULTI_CATEGORY_COLOR  # Черный для множественных направлений
 
 @router.get("/search")
 async def search_suppliers_intelligent(
@@ -49,7 +75,8 @@ async def search_suppliers_intelligent(
                     "supplier_status": s.status.value if hasattr(s.status, 'value') else s.status,
                     "supplier_rating": s.rating,
                     "supplier_tags": s.tags_array or [],
-                    "supplier_color": s.color,
+                    "supplier_categories": s.categories or [],
+                    "supplier_color": get_supplier_display_color(s.categories or []),
                     "matched_products": 0,
                     "max_score": 0,
                     "example_products": [],
@@ -67,11 +94,41 @@ async def search_suppliers_intelligent(
     )
 
     supplier_stats = {}
+    all_products = []  # Все найденные товары
+    
+    # Определяем ключевые слова запроса для точного совпадения
+    query_lower = q.lower()
+    query_words = set(query_lower.split())
 
     for hit in es_response.get("hits", {}).get("hits", []):
         source = hit["_source"]
         supplier_id = source.get("supplier_id")
         score = hit.get("_score", 0)
+        
+        # Определяем точное совпадение (если название содержит ВСЕ слова запроса)
+        product_name = (source.get("name") or "").lower()
+        product_brand = (source.get("brand") or "").lower()
+        product_sku = (source.get("sku") or "").lower()
+        
+        # Точное совпадение если:
+        # 1. Все слова запроса есть в названии
+        # 2. ИЛИ бренд точно совпадает И хотя бы одно слово в названии
+        is_exact_match = (
+            all(word in product_name for word in query_words) or
+            all(word in product_sku for word in query_words) or
+            (query_lower in product_brand and any(word in product_name for word in query_words))
+        )
+
+        # Собираем все товары
+        all_products.append({
+            "sku": source.get("sku"),
+            "name": source.get("name"),
+            "price": source.get("price"),
+            "brand": source.get("brand"),
+            "score": score,
+            "supplier_id": supplier_id,
+            "is_exact_match": is_exact_match
+        })
 
         if supplier_id:
             if supplier_id not in supplier_stats:
@@ -118,7 +175,8 @@ async def search_suppliers_intelligent(
                     "supplier_status": s.status.value if hasattr(s.status, 'value') else s.status,
                     "supplier_rating": s.rating,
                     "supplier_tags": s.tags_array or [],
-                    "supplier_color": s.color,
+                    "supplier_categories": s.categories or [],
+                    "supplier_color": get_supplier_display_color(s.categories or []),
                     "matched_products": 0,
                     "max_score": 0,
                     "example_products": [],
@@ -145,20 +203,29 @@ async def search_suppliers_intelligent(
                 "supplier_status": supplier.status.value if hasattr(supplier.status, 'value') else supplier.status,
                 "supplier_rating": supplier.rating,
                 "supplier_tags": supplier.tags_array or [],
-                "supplier_color": supplier.color,
+                "supplier_categories": supplier.categories or [],
+                "supplier_color": get_supplier_display_color(supplier.categories or []),
                 "matched_products": stats["matched_count"],
                 "max_score": stats["max_score"],
                 "example_products": stats["example_products"],
                 "match_type": "products"
             })
 
-    results.sort(key=lambda x: x["max_score"] * x["matched_products"], reverse=True)
+    # Сортировка: сначала по рейтингу (если есть), потом по релевантности
+    results.sort(
+        key=lambda x: (
+            x["supplier_rating"] if x["supplier_rating"] is not None else -1,  # По рейтингу
+            x["max_score"] * x["matched_products"]  # Потом по релевантности
+        ), 
+        reverse=True
+    )
 
     return {
         "total": len(results),
         "query": q,
         "search_mode": "elasticsearch",
-        "results": results[:limit]
+        "results": results[:limit],
+        "all_products": all_products  # Все найденные товары
     }
 
 @router.get("/", response_model=SupplierListResponse)

@@ -778,39 +778,17 @@
                     </div>
                 </div>
 
+                <!-- КАТЕГОРИИ ВМЕСТО ЦВЕТОВ -->
                 <div class="section">
                     <h2 class="section-title">
                         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"></path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path>
                         </svg>
-                        Цветовая категория
+                        Направления работы
                     </h2>
-                    <p class="section-description">Выберите цвет для визуальной категоризации вашей компании в системе</p>
-                    <div class="color-picker">
-                        <div class="color-option selected" data-color="#3B82F6">
-                            <div class="color-preview" style="background-color: #3B82F6;"></div>
-                            <span class="color-label">Синий (Вода)</span>
-                        </div>
-                        <div class="color-option" data-color="#EAB308">
-                            <div class="color-preview" style="background-color: #EAB308;"></div>
-                            <span class="color-label">Желтый (Электрика)</span>
-                        </div>
-                        <div class="color-option" data-color="#92400E">
-                            <div class="color-preview" style="background-color: #92400E;"></div>
-                            <span class="color-label">Коричневый (Дерево)</span>
-                        </div>
-                        <div class="color-option" data-color="#9333EA">
-                            <div class="color-preview" style="background-color: #9333EA;"></div>
-                            <span class="color-label">Фиолетовый (Химия)</span>
-                        </div>
-                        <div class="color-option" data-color="#6B7280">
-                            <div class="color-preview" style="background-color: #6B7280;"></div>
-                            <span class="color-label">Серый (Разное)</span>
-                        </div>
-                        <div class="color-option" data-color="#EF4444">
-                            <div class="color-preview" style="background-color: #EF4444;"></div>
-                            <span class="color-label">Красный</span>
-                        </div>
+                    <p class="section-description">Выберите одно или несколько направлений вашей компании</p>
+                    <div class="color-picker" id="categoriesContainer">
+                        <!-- Заполняется через JS -->
                     </div>
                 </div>
 
@@ -854,18 +832,61 @@
     </div>
 
     <script>
-        const API_URL = 'http://217.26.28.108/api/supplier-requests/';
+        const API_URL = '/api/supplier-requests/';
 
-        let selectedColor = '#3B82F6';
+        let selectedCategories = [];
         let selectedFiles = [];
+        let categories = {};
+        let useCategoryColors = false;
 
-        document.querySelectorAll('.color-option').forEach(option => {
-            option.addEventListener('click', () => {
-                document.querySelectorAll('.color-option').forEach(o => o.classList.remove('selected'));
-                option.classList.add('selected');
-                selectedColor = option.dataset.color;
+        // ЗАГРУЗКА КАТЕГОРИЙ ИЗ API
+        fetch('/api/suppliers/categories')
+            .then(res => res.json())
+            .then(data => {
+                categories = data.categories || {};
+                useCategoryColors = data.use_category_colors || false;
+                renderCategories();
+            })
+            .catch(err => console.error('Error loading categories:', err));
+
+        function renderCategories() {
+            const container = document.getElementById('categoriesContainer');
+            container.innerHTML = '';
+            
+            Object.entries(categories).forEach(([key, value]) => {
+                const div = document.createElement('div');
+                div.className = 'color-option';
+                div.dataset.category = key;
+                div.onclick = () => toggleCategory(key, div);
+                
+                const preview = document.createElement('div');
+                preview.className = 'color-preview';
+                if (useCategoryColors) {
+                    preview.style.backgroundColor = value.color;
+                } else {
+                    preview.style.backgroundColor = '#6B7280';
+                }
+                
+                const label = document.createElement('span');
+                label.className = 'color-label';
+                label.textContent = value.name;
+                
+                div.appendChild(preview);
+                div.appendChild(label);
+                container.appendChild(div);
             });
-        });
+        }
+
+        function toggleCategory(key, element) {
+            const idx = selectedCategories.indexOf(key);
+            if (idx > -1) {
+                selectedCategories.splice(idx, 1);
+                element.classList.remove('selected');
+            } else {
+                selectedCategories.push(key);
+                element.classList.add('selected');
+            }
+        }
 
         const fileUpload = document.getElementById('fileUpload');
         const fileInput = document.getElementById('pricelistFile');
@@ -1007,7 +1028,7 @@
                 const supplierData = {
                     name: e.target.name.value,
                     inn: e.target.inn.value,
-                    color: selectedColor,
+                    categories: selectedCategories,
                 };
 
                 if (e.target.kpp.value) supplierData.kpp = e.target.kpp.value;
@@ -1034,7 +1055,6 @@
                 if (e.target.contact_telegram.value) formData.append('contact_telegram', e.target.contact_telegram.value);
                 if (e.target.notes.value) formData.append('notes', e.target.notes.value);
                 
-                // ✅ ИСПРАВЛЕНО: отправляем ВСЕ файлы
                 selectedFiles.forEach(file => {
                     formData.append('pricelists', file);
                 });

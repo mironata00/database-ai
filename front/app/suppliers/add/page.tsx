@@ -1,20 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import LayoutWithSidebar from '../../layout-with-sidebar'
-import { Save, Upload } from 'lucide-react'
-
-const AVAILABLE_COLORS = [
-  { hex: '#3B82F6', name: 'Синий (Вода)', category: 'water' },
-  { hex: '#EAB308', name: 'Желтый (Электрика)', category: 'electric' },
-  { hex: '#92400E', name: 'Коричневый (Дерево)', category: 'wood' },
-  { hex: '#9333EA', name: 'Фиолетовый (Химия)', category: 'chemical' },
-  { hex: '#6B7280', name: 'Серый (Разное)', category: 'other' },
-  { hex: '#EF4444', name: 'Красный', category: 'custom' },
-  { hex: '#10B981', name: 'Зеленый', category: 'custom' },
-  { hex: '#F59E0B', name: 'Оранжевый', category: 'custom' },
-]
+import { Save, Upload, X } from 'lucide-react'
 
 const STATUS_OPTIONS = [
   { value: 'ACTIVE', label: 'Активен' },
@@ -26,9 +15,11 @@ export default function AddSupplierPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [file, setFile] = useState<File | null>(null)
-  const [selectedColor, setSelectedColor] = useState('#3B82F6')
+  const [files, setFiles] = useState<File[]>([])
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([])
   const [selectedStatus, setSelectedStatus] = useState('ACTIVE')
+  const [categories, setCategories] = useState<any>({})
+  const [useCategoryColors, setUseCategoryColors] = useState(true)
 
   const [formData, setFormData] = useState({
     name: '',
@@ -54,6 +45,23 @@ export default function AddSupplierPage() {
     ? `${window.location.protocol}//${window.location.host}`
     : 'http://localhost'
 
+  useEffect(() => {
+    fetchCategories()
+  }, [])
+
+  const fetchCategories = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/suppliers/categories`)
+      if (response.ok) {
+        const data = await response.json()
+        setCategories(data.categories || {})
+        setUseCategoryColors(data.use_category_colors || false)
+      }
+    } catch (error) {
+      console.error('Error fetching categories:', error)
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
@@ -69,8 +77,8 @@ export default function AddSupplierPage() {
       const payload: any = {
         name: formData.name,
         inn: formData.inn,
-        color: selectedColor,
         status: selectedStatus,
+        categories: selectedCategories,
       }
       
       if (formData.kpp) payload.kpp = formData.kpp
@@ -113,250 +121,433 @@ export default function AddSupplierPage() {
 
       const supplier = await response.json()
 
-      if (file) {
-        const formData = new FormData()
-        formData.append('file', file)
+      // Загрузка всех прайс-листов
+      if (files.length > 0) {
+        for (const file of files) {
+          const formData = new FormData()
+          formData.append('file', file)
 
-        await fetch(`${API_URL}/api/suppliers/${supplier.id}/upload-pricelist-new`, {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${token}` },
-          body: formData,
-        })
+          await fetch(`${API_URL}/api/suppliers/${supplier.id}/upload-pricelist-new`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` },
+            body: formData,
+          })
+        }
       }
 
       router.push('/suppliers')
     } catch (err: any) {
-      setError(err.message || 'Ошибка создания поставщика')
+      setError(err.message)
     } finally {
       setLoading(false)
     }
   }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    setFormData(prev => ({
-      ...prev,
-      [e.target.name]: e.target.value
-    }))
+    setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }))
   }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setFile(e.target.files[0])
+    if (e.target.files) {
+      setFiles(prev => [...prev, ...Array.from(e.target.files!)])
     }
+  }
+
+  const removeFile = (index: number) => {
+    setFiles(prev => prev.filter((_, i) => i !== index))
+  }
+
+  const toggleCategory = (categoryKey: string) => {
+    setSelectedCategories(prev => 
+      prev.includes(categoryKey)
+        ? prev.filter(c => c !== categoryKey)
+        : [...prev, categoryKey]
+    )
   }
 
   return (
     <LayoutWithSidebar>
-      <div className="bg-white border-b">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <h1 className="text-xl font-semibold">Добавить поставщика</h1>
+      <div className="min-h-screen bg-gray-50">
+        <div className="bg-white border-b">
+          <div className="max-w-4xl mx-auto px-4 py-4">
+            <h1 className="text-xl font-semibold">Добавить поставщика</h1>
+          </div>
         </div>
-      </div>
 
-      <div className="max-w-4xl mx-auto px-4 py-8">
-        <form onSubmit={handleSubmit} className="bg-white rounded-lg border p-6">
+        <div className="max-w-4xl mx-auto px-4 py-8">
           {error && (
-            <div className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+            <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
               {error}
             </div>
           )}
 
-          {/* Статус */}
-          <div className="mb-8">
-            <h2 className="text-lg font-semibold mb-4">Статус</h2>
-            <select
-              value={selectedStatus}
-              onChange={(e) => setSelectedStatus(e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-            >
-              {STATUS_OPTIONS.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Остальной код без изменений... */}
-          {/* Выбор цвета */}
-          <div className="mb-8">
-            <h2 className="text-lg font-semibold mb-4">Цветовая категория</h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {AVAILABLE_COLORS.map((color) => (
-                <button
-                  key={color.hex}
-                  type="button"
-                  onClick={() => setSelectedColor(color.hex)}
-                  className={`flex items-center space-x-3 p-3 border-2 rounded-lg hover:shadow-md transition ${
-                    selectedColor === color.hex ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
-                  }`}
-                >
-                  <div 
-                    className="w-8 h-8 rounded-full border-2 border-gray-300" 
-                    style={{ backgroundColor: color.hex }}
-                  />
-                  <span className="text-sm font-medium">{color.name}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Основная информация - БЕЗ ИЗМЕНЕНИЙ */}
-          <div className="mb-8">
-            <h2 className="text-lg font-semibold mb-4">Основная информация</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium mb-2">
-                  Название компании <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  name="name"
-                  value={formData.name}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-2">
-                  ИНН <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  name="inn"
-                  value={formData.inn}
-                  onChange={handleChange}
-                  pattern="[0-9]{10,12}"
-                  maxLength={12}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-2">КПП</label>
-                <input
-                  type="text"
-                  name="kpp"
-                  value={formData.kpp}
-                  onChange={handleChange}
-                  pattern="[0-9]{9}"
-                  maxLength={9}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-2">ОГРН</label>
-                <input
-                  type="text"
-                  name="ogrn"
-                  value={formData.ogrn}
-                  onChange={handleChange}
-                  pattern="[0-9]{13,15}"
-                  maxLength={15}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-2">Email</label>
-                <input
-                  type="email"
-                  name="email"
-                  value={formData.email}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-2">Телефон</label>
-                <input
-                  type="tel"
-                  name="phone"
-                  value={formData.phone}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-2">Сайт</label>
-                <input
-                  type="text"
-                  name="website"
-                  value={formData.website}
-                  onChange={handleChange}
-                  placeholder="example.com"
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Остальные секции БЕЗ ИЗМЕНЕНИЙ - адреса, контакты, условия, прайс-лист, примечания */}
-          <div className="mb-8">
-            <h2 className="text-lg font-semibold mb-4">Адреса</h2>
-            <div className="grid grid-cols-1 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-2">Юридический адрес</label>
-                <input type="text" name="legal_address" value={formData.legal_address} onChange={handleChange} className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-2">Фактический адрес</label>
-                <input type="text" name="actual_address" value={formData.actual_address} onChange={handleChange} className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-2">Регионы доставки (через запятую)</label>
-                <input type="text" name="delivery_regions" value={formData.delivery_regions} onChange={handleChange} placeholder="Москва, Московская область" className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
-              </div>
-            </div>
-          </div>
-
-          <div className="mb-8">
-            <h2 className="text-lg font-semibold mb-4">Контактное лицо</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div><label className="block text-sm font-medium mb-2">ФИО</label><input type="text" name="contact_person" value={formData.contact_person} onChange={handleChange} className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" /></div>
-              <div><label className="block text-sm font-medium mb-2">Должность</label><input type="text" name="contact_position" value={formData.contact_position} onChange={handleChange} className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" /></div>
-              <div><label className="block text-sm font-medium mb-2">Телефон контакта</label><input type="tel" name="contact_phone" value={formData.contact_phone} onChange={handleChange} className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" /></div>
-              <div><label className="block text-sm font-medium mb-2">Email контакта</label><input type="email" name="contact_email" value={formData.contact_email} onChange={handleChange} className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" /></div>
-            </div>
-          </div>
-
-          <div className="mb-8">
-            <h2 className="text-lg font-semibold mb-4">Условия работы</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div><label className="block text-sm font-medium mb-2">Условия оплаты</label><input type="text" name="payment_terms" value={formData.payment_terms} onChange={handleChange} placeholder="Постоплата 14 дней" className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" /></div>
-              <div><label className="block text-sm font-medium mb-2">Минимальная сумма заказа (₽)</label><input type="number" name="min_order_sum" value={formData.min_order_sum} onChange={handleChange} step="0.01" min="0" className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" /></div>
-            </div>
-          </div>
-
-          <div className="mb-8">
-            <h2 className="text-lg font-semibold mb-4">Прайс-лист (опционально)</h2>
-            <div className="border-2 border-dashed rounded-lg p-6">
-              <input type="file" id="file-upload" onChange={handleFileChange} accept=".xlsx,.xls,.csv,.pdf" className="hidden" />
-              <label htmlFor="file-upload" className="flex flex-col items-center cursor-pointer">
-                <Upload className="w-12 h-12 text-gray-400 mb-2" />
-                <span className="text-sm text-gray-600">{file ? file.name : 'Нажмите для выбора файла или перетащите сюда'}</span>
-                <span className="text-xs text-gray-400 mt-1">Поддерживаются: Excel, CSV, PDF</span>
+          <form onSubmit={handleSubmit} className="bg-white rounded-lg border p-6 space-y-6">
+            {/* Статус */}
+            <div>
+              <label className="block text-sm font-medium mb-2">
+                Статус <span className="text-red-500">*</span>
               </label>
+              <select
+                value={selectedStatus}
+                onChange={(e) => setSelectedStatus(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+              >
+                {STATUS_OPTIONS.map(option => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
             </div>
-          </div>
 
-          <div className="mb-8">
-            <h2 className="text-lg font-semibold mb-4">Примечания</h2>
-            <textarea name="notes" value={formData.notes} onChange={handleChange} rows={4} className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Дополнительная информация" />
-          </div>
+            {/* Направления работы */}
+            <div>
+              <label className="block text-sm font-medium mb-3">
+                Направления работы
+              </label>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                {Object.entries(categories).map(([key, value]: [string, any]) => {
+                  const isSelected = selectedCategories.includes(key)
+                  return (
+                    <div
+                      key={key}
+                      onClick={() => toggleCategory(key)}
+                      className={`p-3 rounded-lg border-2 cursor-pointer transition ${
+                        isSelected 
+                          ? 'border-blue-500 bg-blue-50' 
+                          : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                      style={useCategoryColors && isSelected 
+                        ? { borderLeftWidth: '4px', borderLeftColor: value.color }
+                        : {}
+                      }
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">{value.name}</span>
+                        {isSelected && (
+                          <span className="text-blue-500">✓</span>
+                        )}
+                      </div>
+                      {useCategoryColors && (
+                        <div 
+                          className="w-full h-1 rounded mt-2"
+                          style={{ backgroundColor: value.color }}
+                        />
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
 
-          <div className="flex justify-end space-x-4">
-            <button type="button" onClick={() => router.push('/suppliers')} className="px-6 py-2 border rounded-lg hover:bg-gray-50">Отмена</button>
-            <button type="submit" disabled={loading} className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 flex items-center space-x-2">
-              <Save className="w-4 h-4" />
-              <span>{loading ? 'Сохранение...' : 'Сохранить'}</span>
-            </button>
-          </div>
-        </form>
+            {/* Основная информация */}
+            <div>
+              <h2 className="text-lg font-semibold mb-4">Основная информация</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium mb-2">
+                    Название компании <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    name="name"
+                    value={formData.name}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    ИНН <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    name="inn"
+                    value={formData.inn}
+                    onChange={handleChange}
+                    pattern="[0-9]{10,12}"
+                    maxLength={12}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">КПП</label>
+                  <input
+                    type="text"
+                    name="kpp"
+                    value={formData.kpp}
+                    onChange={handleChange}
+                    pattern="[0-9]{9}"
+                    maxLength={9}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">ОГРН</label>
+                  <input
+                    type="text"
+                    name="ogrn"
+                    value={formData.ogrn}
+                    onChange={handleChange}
+                    pattern="[0-9]{13,15}"
+                    maxLength={15}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">Email</label>
+                  <input
+                    type="email"
+                    name="email"
+                    value={formData.email}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">Телефон</label>
+                  <input
+                    type="tel"
+                    name="phone"
+                    value={formData.phone}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium mb-2">Сайт</label>
+                  <input
+                    type="url"
+                    name="website"
+                    value={formData.website}
+                    onChange={handleChange}
+                    placeholder="https://example.com"
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Контактное лицо */}
+            <div>
+              <h2 className="text-lg font-semibold mb-4">Контактное лицо</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">ФИО</label>
+                  <input
+                    type="text"
+                    name="contact_person"
+                    value={formData.contact_person}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">Должность</label>
+                  <input
+                    type="text"
+                    name="contact_position"
+                    value={formData.contact_position}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">Телефон</label>
+                  <input
+                    type="tel"
+                    name="contact_phone"
+                    value={formData.contact_phone}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">Email</label>
+                  <input
+                    type="email"
+                    name="contact_email"
+                    value={formData.contact_email}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Адреса */}
+            <div>
+              <h2 className="text-lg font-semibold mb-4">Адреса</h2>
+              <div className="grid grid-cols-1 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Юридический адрес</label>
+                  <textarea
+                    name="legal_address"
+                    value={formData.legal_address}
+                    onChange={handleChange}
+                    rows={2}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">Фактический адрес</label>
+                  <textarea
+                    name="actual_address"
+                    value={formData.actual_address}
+                    onChange={handleChange}
+                    rows={2}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Условия работы */}
+            <div>
+              <h2 className="text-lg font-semibold mb-4">Условия работы</h2>
+              <div className="grid grid-cols-1 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Регионы доставки</label>
+                  <input
+                    type="text"
+                    name="delivery_regions"
+                    value={formData.delivery_regions}
+                    onChange={handleChange}
+                    placeholder="Москва, Московская область, Санкт-Петербург"
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Через запятую</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">Условия оплаты</label>
+                  <textarea
+                    name="payment_terms"
+                    value={formData.payment_terms}
+                    onChange={handleChange}
+                    rows={2}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">Минимальная сумма заказа</label>
+                  <input
+                    type="number"
+                    name="min_order_sum"
+                    value={formData.min_order_sum}
+                    onChange={handleChange}
+                    step="0.01"
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">Примечания</label>
+                  <textarea
+                    name="notes"
+                    value={formData.notes}
+                    onChange={handleChange}
+                    rows={3}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Загрузка прайс-листов */}
+            <div>
+              <label className="block text-sm font-medium mb-2">
+                Прайс-листы (можно несколько)
+              </label>
+              <div className="border-2 border-dashed rounded-lg p-8 text-center">
+                <input
+                  type="file"
+                  onChange={handleFileChange}
+                  accept=".xlsx,.xls,.csv"
+                  multiple
+                  className="hidden"
+                  id="file-upload"
+                />
+                <label
+                  htmlFor="file-upload"
+                  className="cursor-pointer"
+                >
+                  <Upload className="w-12 h-12 mx-auto text-gray-400 mb-4" />
+                  <p className="text-sm text-gray-600 mb-1">
+                    <span className="text-blue-600 font-medium">Нажмите для выбора файлов</span> или перетащите их сюда
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    Excel, CSV, PDF • Максимум 100 МБ на файл
+                  </p>
+                </label>
+              </div>
+              
+              {files.length > 0 && (
+                <div className="mt-3 space-y-2">
+                  {files.map((file, index) => (
+                    <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <div className="flex items-center space-x-3 flex-1 min-w-0">
+                        <Upload className="w-5 h-5 text-blue-500 flex-shrink-0" />
+                        <span className="text-sm truncate">{file.name}</span>
+                        <span className="text-xs text-gray-500 flex-shrink-0">
+                          {(file.size / 1024 / 1024).toFixed(2)} MB
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeFile(index)}
+                        className="ml-2 p-1 text-red-500 hover:bg-red-50 rounded"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Кнопки */}
+            <div className="flex items-center gap-3 pt-4 border-t">
+              <button
+                type="submit"
+                disabled={loading}
+                className="flex items-center px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                    Сохранение...
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4 mr-2" />
+                    Создать поставщика
+                  </>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => router.back()}
+                className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Отмена
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
     </LayoutWithSidebar>
   )

@@ -48,6 +48,9 @@ class Supplier(BaseModel):
     # Tags (denormalized for quick access)
     tags_array = Column(ARRAY(String))
     
+    # Categories/Directions (электрика, сантехника, etc.)
+    categories = Column(ARRAY(String), nullable=True, default=[])
+    
     # Color for visual categorization
     color = Column(String(7), nullable=False, server_default='#3B82F6')
 

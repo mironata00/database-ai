@@ -42,6 +42,7 @@ export default function RequestsPage() {
   const [showRejectModal, setShowRejectModal] = useState(false)
   const [rejectReason, setRejectReason] = useState('')
   const [pendingCount, setPendingCount] = useState(0)
+  const [useCategoryColors, setUseCategoryColors] = useState(true)
   const API_URL = typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.host}` : 'http://localhost'
 
   useEffect(() => { checkAuth() }, [])
@@ -53,6 +54,19 @@ export default function RequestsPage() {
     if (!token) { router.push('/login'); return }
     const user = userData ? JSON.parse(userData) : null
     if (user?.role !== 'admin') { alert('Доступ запрещен'); router.push('/'); return }
+    fetchCategorySettings()
+  }
+
+  const fetchCategorySettings = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/suppliers/categories`)
+      if (response.ok) {
+        const data = await response.json()
+        setUseCategoryColors(data.use_category_colors || false)
+      }
+    } catch (error) {
+      console.error('Error:', error)
+    }
   }
 
   const fetchRequests = async () => {
@@ -279,7 +293,7 @@ export default function RequestsPage() {
                   <div className="p-4">
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex items-center space-x-3">
-                        <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-semibold" style={{ backgroundColor: req.data.color }}>
+                        <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-semibold" style={useCategoryColors ? { backgroundColor: req.data.color } : { backgroundColor: '#6B7280' }}>
                           {req.data.name.charAt(0)}
                         </div>
                         <div className="flex-1 min-w-0">

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import LayoutWithSidebar from './layout-with-sidebar'
-import { Search, Loader2, Mail, X, Check } from 'lucide-react'
+import { Search, Loader2, Mail, X, Check, Filter } from 'lucide-react'
 
 interface Supplier {
   id: string
@@ -15,6 +15,7 @@ interface Supplier {
   tags_array: string[]
   status: string
   color: string
+  categories: string[]
 }
 
 interface ProductItem {
@@ -30,7 +31,11 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true)
   const [searching, setSearching] = useState(false)
   const searchTimeoutRef = useRef<NodeJS.Timeout>()
-  
+  const [userRole, setUserRole] = useState<string>('')
+  const [categories, setCategories] = useState<any>({})
+  const [selectedCategory, setSelectedCategory] = useState<string>('')
+  const [useCategoryColors, setUseCategoryColors] = useState(true)
+
   // Modal state
   const [showModal, setShowModal] = useState(false)
   const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set())
@@ -40,7 +45,7 @@ export default function HomePage() {
   const [emailBody, setEmailBody] = useState('')
   const [sending, setSending] = useState(false)
   const [sendProgress, setSendProgress] = useState(0)
-  
+
   const API_URL = typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.host}` : 'http://localhost'
 
   useEffect(() => { checkAuth() }, [])
@@ -48,27 +53,45 @@ export default function HomePage() {
   const checkAuth = () => {
     const token = localStorage.getItem('access_token')
     if (!token) { router.push('/login'); return }
+    const userData = localStorage.getItem('user')
+    const user = userData ? JSON.parse(userData) : null
+    setUserRole(user?.role || '')
+    fetchCategories()
     fetchSuppliers()
     fetchDefaults()
+  }
+
+  const fetchCategories = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/suppliers/categories`)
+      if (response.ok) {
+        const data = await response.json()
+        setCategories(data.categories || {})
+        setUseCategoryColors(data.use_category_colors || false)
+      }
+    } catch (error) {
+      console.error('Error:', error)
+    }
   }
 
   const fetchSuppliers = async () => {
     try {
       const token = localStorage.getItem('access_token')
-      const response = await fetch(`${API_URL}/api/suppliers/`, { 
-        headers: { 'Authorization': `Bearer ${token}` } 
+
+      const response = await fetch(`${API_URL}/api/suppliers/`, {
+        headers: { 'Authorization': `Bearer ${token}` }
       })
-      if (response.status === 401) { 
+      if (response.status === 401) {
         localStorage.clear()
         router.push('/login')
-        return 
+        return
       }
       const data = await response.json()
       setSuppliers(data.suppliers || [])
-    } catch (error) { 
-      console.error('Error:', error) 
-    } finally { 
-      setLoading(false) 
+    } catch (error) {
+      console.error('Error:', error)
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -129,18 +152,19 @@ export default function HomePage() {
     }
   }
 
-  const handleSupplierClick = (supplierId: string) => { 
-    router.push(`/suppliers/${supplierId}`) 
+  const handleSupplierClick = (supplierId: string) => {
+    router.push(`/suppliers/${supplierId}`)
   }
 
   const openPriceRequestModal = () => {
-    // Собираем уникальные товары из результатов поиска
     const products: ProductItem[] = []
     const seen = new Set<string>()
-    
-    searchResults.forEach(result => {
-      if (result.example_products) {
-        result.example_products.forEach((p: any) => {
+
+    const currentResults = getDisplayedSuppliers()
+
+    currentResults.forEach((result: any) => {
+      if (result._search?.example_products) {
+        result._search.example_products.forEach((p: any) => {
           const key = `${p.name}_${p.sku || ''}`
           if (!seen.has(key) && products.length < 20) {
             seen.add(key)
@@ -149,19 +173,20 @@ export default function HomePage() {
         })
       }
     })
-    
+
     setAvailableProducts(products)
-    
-    // Автоматически выбираем все найденные товары
+
     const productKeys = new Set(products.map(p => `${p.name}_${p.sku || ''}`))
     setSelectedProducts(productKeys)
-    
-    // Автоматически выбираем всех поставщиков с email
-    const supplierIds = suppliers
-      .filter(s => s.email && s.status === 'ACTIVE' && !s.is_blacklisted)
-      .sort((a, b) => (b.rating || 0) - (a.rating || 0))
-      .map(s => s.id)
-    
+
+    const supplierIds = currentResults
+      .filter((s: any) => {
+        const fullSupplier = suppliers.find(sup => sup.id === s.id)
+        return fullSupplier?.email && fullSupplier?.status === 'ACTIVE' && !fullSupplier?.is_blacklisted
+      })
+      .sort((a: any, b: any) => (b.rating || 0) - (a.rating || 0))
+      .map((s: any) => s.id)
+
     setSelectedSuppliers(supplierIds)
     setShowModal(true)
   }
@@ -180,23 +205,23 @@ export default function HomePage() {
   }
 
   const toggleSupplier = (supplierId: string) => {
-    setSelectedSuppliers(prev => 
-      prev.includes(supplierId) 
+    setSelectedSuppliers(prev =>
+      prev.includes(supplierId)
         ? prev.filter(id => id !== supplierId)
         : [...prev, supplierId]
     )
   }
 
   const sendPriceRequests = async () => {
-    const productsToSend = availableProducts.filter(p => 
+    const productsToSend = availableProducts.filter(p =>
       selectedProducts.has(`${p.name}_${p.sku || ''}`)
     )
-    
+
     if (productsToSend.length === 0) {
       alert('Выберите хотя бы один товар')
       return
     }
-    
+
     if (selectedSuppliers.length === 0) {
       alert('Выберите хотя бы одного поставщика')
       return
@@ -207,7 +232,7 @@ export default function HomePage() {
 
     try {
       const token = localStorage.getItem('access_token')
-      
+
       const progressInterval = setInterval(() => {
         setSendProgress(prev => Math.min(prev + 10, 90))
       }, 200)
@@ -248,23 +273,34 @@ export default function HomePage() {
     }
   }
 
-  const displayedSuppliers = searchQuery.length >= 2 
-    ? searchResults.map(result => ({
-        id: result.supplier_id,
-        name: result.supplier_name,
-        inn: result.supplier_inn,
-        status: result.supplier_status,
-        rating: result.supplier_rating,
-        email: null,
-        is_blacklisted: false,
-        tags_array: result.supplier_tags || [],
-        color: result.supplier_color || '#3B82F6',
-        _search: {
-          matched_products: result.matched_products,
-          example_products: result.example_products
-        }
-      }))
-    : suppliers
+  const getDisplayedSuppliers = () => {
+    let results = searchQuery.length >= 2
+      ? searchResults.map(result => ({
+          id: result.supplier_id,
+          name: result.supplier_name,
+          inn: result.supplier_inn,
+          status: result.supplier_status,
+          rating: result.supplier_rating,
+          email: null,
+          is_blacklisted: false,
+          tags_array: result.supplier_tags || [],
+          color: result.supplier_color || '#3B82F6',
+          categories: result.supplier_categories || [],
+          _search: {
+            matched_products: result.matched_products,
+            example_products: result.example_products
+          }
+        }))
+      : suppliers
+
+    if (selectedCategory) {
+      results = results.filter((s: any) => s.categories && s.categories.includes(selectedCategory))
+    }
+
+    return results
+  }
+
+  const displayedSuppliers = getDisplayedSuppliers()
 
   const availableSuppliers = suppliers
     .filter(s => s.email && s.status === 'ACTIVE' && !s.is_blacklisted)
@@ -276,33 +312,40 @@ export default function HomePage() {
         <header className="bg-white border-b px-6 py-4">
           <div className="flex items-center space-x-4">
             <div className="flex-1 relative">
-              <input 
-                type="text" 
-                placeholder="Поиск по названию, артикулу, бренду, категории... (мин. 2 символа)" 
-                className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" 
-                value={searchQuery} 
-                onChange={(e) => handleSearchChange(e.target.value)} 
+              <input
+                type="text"
+                placeholder="Поиск по названию, артикулу, бренду, категории... (мин. 2 символа)"
+                className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={searchQuery}
+                onChange={(e) => handleSearchChange(e.target.value)}
               />
               {searching && (
                 <Loader2 className="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 animate-spin text-blue-500" />
               )}
             </div>
-            <button 
-              onClick={() => router.push('/suppliers/add')} 
-              className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
-            >
-              Добавить поставщика
-            </button>
+            {userRole === 'admin' && (
+              <button
+                onClick={() => router.push('/suppliers/add')}
+                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+              >
+                Добавить поставщика
+              </button>
+            )}
           </div>
-          
-          <div className="flex items-center justify-between mt-2">
-            {searchQuery.length >= 2 && (
+
+          {/* Счетчик и кнопка запроса цен */}
+          <div className="flex items-center justify-between mt-3">
+            {searchQuery.length >= 2 ? (
               <div className="text-sm text-gray-600">
-                {searching ? 'Поиск...' : `Найдено: ${searchResults.length}`}
+                {searching ? 'Поиск...' : `Найдено: ${displayedSuppliers.length}${selectedCategory ? ` (отфильтровано по категории)` : ''}`}
+              </div>
+            ) : (
+              <div className="text-sm text-gray-600">
+                Показано: {displayedSuppliers.length} из {suppliers.length}
               </div>
             )}
-            
-            {searchQuery.length >= 2 && searchResults.length > 0 && (
+
+            {searchQuery.length >= 2 && displayedSuppliers.length > 0 && (
               <button
                 onClick={openPriceRequestModal}
                 className="flex items-center space-x-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600"
@@ -312,6 +355,31 @@ export default function HomePage() {
               </button>
             )}
           </div>
+
+          {/* Фильтр по категориям */}
+          {Object.keys(categories).length > 0 && (
+            <div className="mt-2 flex items-center space-x-2">
+              <Filter className="w-4 h-4 text-gray-500" />
+              <select
+                value={selectedCategory}
+                onChange={(e) => setSelectedCategory(e.target.value)}
+                className="px-3 py-1.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Все направления</option>
+                {Object.entries(categories).map(([key, value]: [string, any]) => (
+                  <option key={key} value={key}>{value.name}</option>
+                ))}
+              </select>
+              {selectedCategory && (
+                <button
+                  onClick={() => setSelectedCategory('')}
+                  className="text-sm text-gray-500 hover:text-gray-700"
+                >
+                  Сбросить
+                </button>
+              )}
+            </div>
+          )}
         </header>
 
         <div className="p-8">
@@ -325,16 +393,19 @@ export default function HomePage() {
             </div>
           ) : displayedSuppliers.length === 0 ? (
             <div className="text-center py-12 text-gray-500">
-              {searchQuery.length >= 2 ? 'Ничего не найдено' : 'Поставщики не найдены'}
+              {searchQuery.length >= 2 
+                ? (selectedCategory ? 'В этой категории ничего не найдено' : 'Ничего не найдено')
+                : (selectedCategory ? 'В этой категории нет поставщиков' : 'Поставщики не найдены')
+              }
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {displayedSuppliers.map((supplier: any) => (
-                <div 
-                  key={supplier.id} 
-                  onClick={() => handleSupplierClick(supplier.id)} 
+                <div
+                  key={supplier.id}
+                  onClick={() => handleSupplierClick(supplier.id)}
                   className="bg-white rounded-lg border-2 border-gray-200 hover:border-blue-400 hover:shadow-lg transition cursor-pointer overflow-hidden"
-                  style={{ borderLeft: `3px solid ${supplier.color || '#3B82F6'}` }}
+                  style={useCategoryColors ? { borderLeft: `3px solid ${supplier.color || '#3B82F6'}` } : {}}
                 >
                   <div className="p-4">
                     <div className="flex items-start justify-between mb-2">
@@ -349,7 +420,7 @@ export default function HomePage() {
                         </span>
                       </div>
                     </div>
-                    
+
                     {supplier._search && supplier._search.matched_products > 0 && (
                       <div className="mb-2 p-2 bg-blue-50 rounded">
                         <div className="text-xs text-blue-600 font-medium">
@@ -367,7 +438,7 @@ export default function HomePage() {
                         )}
                       </div>
                     )}
-                    
+
                     {supplier.tags_array && supplier.tags_array.length > 0 && (
                       <div className="flex flex-wrap gap-1 mt-2">
                         {supplier.tags_array.slice(0, 3).map((tag: string, idx: number) => (
@@ -389,7 +460,7 @@ export default function HomePage() {
 
         {/* Modal */}
         {showModal && (
-          <div 
+          <div
             className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
             onClick={(e) => {
               if (e.target === e.currentTarget && !sending) setShowModal(false)
@@ -398,7 +469,7 @@ export default function HomePage() {
             <div className="bg-white rounded-lg max-w-6xl w-full max-h-[90vh] overflow-y-auto">
               <div className="sticky top-0 bg-white border-b p-4 flex items-center justify-between z-10">
                 <h2 className="text-xl font-bold">Отправка запроса цен</h2>
-                <button 
+                <button
                   onClick={() => !sending && setShowModal(false)}
                   className="p-2 hover:bg-gray-100 rounded-lg"
                   disabled={sending}
@@ -408,7 +479,6 @@ export default function HomePage() {
               </div>
 
               <div className="p-6 space-y-6">
-                {/* Товары */}
                 <div>
                   <h3 className="font-semibold mb-3">Найденные товары ({availableProducts.length})</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-60 overflow-y-auto">
@@ -416,12 +486,12 @@ export default function HomePage() {
                       const key = `${product.name}_${product.sku || ''}`
                       const isSelected = selectedProducts.has(key)
                       return (
-                        <div 
+                        <div
                           key={idx}
                           onClick={() => toggleProduct(product)}
                           className={`flex items-start space-x-2 p-3 rounded cursor-pointer border-2 transition ${
-                            isSelected 
-                              ? 'bg-green-50 border-green-500' 
+                            isSelected
+                              ? 'bg-green-50 border-green-500'
                               : 'bg-gray-50 border-gray-200 hover:border-gray-300'
                           }`}
                         >
@@ -444,7 +514,6 @@ export default function HomePage() {
                   </div>
                 </div>
 
-                {/* Тема и тело письма */}
                 <div>
                   <label className="block text-sm font-medium mb-1">Тема письма</label>
                   <input
@@ -467,7 +536,6 @@ export default function HomePage() {
                   />
                 </div>
 
-                {/* Поставщики */}
                 <div>
                   <h3 className="font-semibold mb-3">Поставщики (по рейтингу) - {availableSuppliers.length} доступно</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-80 overflow-y-auto">
@@ -480,7 +548,7 @@ export default function HomePage() {
                             ? 'border-green-500 bg-green-50'
                             : 'border-gray-200 hover:border-gray-300'
                         }`}
-                        style={{ borderLeft: `4px solid ${supplier.color}` }}
+                        style={useCategoryColors ? { borderLeft: `4px solid ${supplier.color}` } : {}}
                       >
                         <div className="flex-1 min-w-0">
                           <div className="font-medium text-sm truncate">{supplier.name}</div>
@@ -495,7 +563,6 @@ export default function HomePage() {
                   </div>
                 </div>
 
-                {/* Прогресс бар */}
                 {sending && (
                   <div className="space-y-2">
                     <div className="flex justify-between text-sm text-gray-600">
@@ -503,7 +570,7 @@ export default function HomePage() {
                       <span>{sendProgress}%</span>
                     </div>
                     <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-                      <div 
+                      <div
                         className="h-full bg-green-500 transition-all duration-300"
                         style={{ width: `${sendProgress}%` }}
                       />
@@ -511,7 +578,6 @@ export default function HomePage() {
                   </div>
                 )}
 
-                {/* Кнопка отправки */}
                 <div className="flex justify-end space-x-3">
                   <div className="text-sm text-gray-600">
                     Выбрано: {selectedProducts.size} товаров, {selectedSuppliers.length} поставщиков

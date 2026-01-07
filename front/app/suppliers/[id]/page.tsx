@@ -5,17 +5,6 @@ import { useRouter, useParams } from 'next/navigation'
 import LayoutWithSidebar from '../../layout-with-sidebar'
 import { Mail, Phone, Globe, MapPin, Star, Upload, Download, X, Plus, Trash2, Palette, Edit2, Check, ChevronDown, ChevronUp } from 'lucide-react'
 
-const AVAILABLE_COLORS = [
-  { hex: '#3B82F6', name: 'Синий (Вода)', category: 'water' },
-  { hex: '#EAB308', name: 'Желтый (Электрика)', category: 'electric' },
-  { hex: '#92400E', name: 'Коричневый (Дерево)', category: 'wood' },
-  { hex: '#9333EA', name: 'Фиолетовый (Химия)', category: 'chemical' },
-  { hex: '#6B7280', name: 'Серый (Разное)', category: 'other' },
-  { hex: '#EF4444', name: 'Красный', category: 'custom' },
-  { hex: '#10B981', name: 'Зеленый', category: 'custom' },
-  { hex: '#F59E0B', name: 'Оранжевый', category: 'custom' },
-]
-
 const STATUS_OPTIONS = [
   { value: 'ACTIVE', label: 'Активен', color: 'green' },
   { value: 'INACTIVE', label: 'Неактивен', color: 'gray' },
@@ -44,6 +33,9 @@ export default function SupplierDetailPage() {
   const [showColorPicker, setShowColorPicker] = useState(false)
   const [userRole, setUserRole] = useState<string>('')
   const [newRating, setNewRating] = useState('')
+  const [categories, setCategories] = useState<any>({})
+  const [useCategoryColors, setUseCategoryColors] = useState(true)
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([])
   const prevImportsRef = useRef<any[]>([])
 
   const API_URL = typeof window !== 'undefined'
@@ -63,11 +55,25 @@ export default function SupplierDetailPage() {
       }
     }
 
+    fetchCategorySettings()
     fetchSupplier()
     fetchImports()
     const interval = setInterval(fetchImports, 3000)
     return () => clearInterval(interval)
   }, [])
+
+  const fetchCategorySettings = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/suppliers/categories`)
+      if (response.ok) {
+        const data = await response.json()
+        setCategories(data.categories || {})
+        setUseCategoryColors(data.use_category_colors || false)
+      }
+    } catch (error) {
+      console.error('Error:', error)
+    }
+  }
 
   useEffect(() => {
     const prevImports = prevImportsRef.current
@@ -96,6 +102,7 @@ export default function SupplierDetailPage() {
         setNewRating(data.rating?.toString() || '0')
         setTags(data.tags_array || [])
         setSelectedStatus(data.status || 'ACTIVE')
+        setSelectedCategories(data.categories || [])
       }
     } catch (error) {
       console.error('Error:', error)
@@ -216,6 +223,29 @@ export default function SupplierDetailPage() {
         const updated = await response.json()
         setSupplier(updated)
         setShowColorPicker(false)
+      }
+    } catch (error) {
+      console.error('Error:', error)
+    }
+  }
+
+  const updateCategories = async (newCategories: string[]) => {
+    if (!isAdmin) return
+
+    try {
+      const token = localStorage.getItem('access_token')
+      const response = await fetch(`${API_URL}/api/suppliers/${params.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ categories: newCategories })
+      })
+
+      if (response.ok) {
+        const updated = await response.json()
+        setSupplier(updated)
       }
     } catch (error) {
       console.error('Error:', error)
@@ -429,7 +459,7 @@ export default function SupplierDetailPage() {
 
   return (
     <LayoutWithSidebar>
-      <div className="bg-white border-b" style={{ borderLeft: `3px solid ${supplier.color}` }}>
+      <div className="bg-white border-b" style={useCategoryColors ? { borderLeft: `3px solid ${supplier.color}` } : {}}>
         <div className="max-w-7xl mx-auto px-4 py-4">
           <h1 className="text-xl font-semibold">{supplier.name}</h1>
           {!isAdmin && <p className="text-sm text-gray-500 mt-1">Режим просмотра (менеджер)</p>}
@@ -544,35 +574,40 @@ export default function SupplierDetailPage() {
               </div>
             </div>
 
-            {/* Цвет категории */}
+            {/* Направления */}
             <div className="bg-white rounded-lg border p-6">
-              <h2 className="text-lg font-semibold mb-4">Цвет категории</h2>
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center space-x-3">
-                  <div className="w-12 h-12 rounded-full border-2 border-gray-300" style={{ backgroundColor: supplier.color }} />
-                  <span className="text-sm text-gray-600">{AVAILABLE_COLORS.find(c => c.hex === supplier.color)?.name || 'Цвет'}</span>
-                </div>
-                {isAdmin && (
-                  <button onClick={() => setShowColorPicker(!showColorPicker)} className="p-2 hover:bg-gray-100 rounded-lg">
-                    <Palette className="w-5 h-5" />
-                  </button>
-                )}
-              </div>
-
-              {isAdmin && showColorPicker && (
-                <div className="grid grid-cols-2 gap-2">
-                  {AVAILABLE_COLORS.map((color) => (
+              <h2 className="text-lg font-semibold mb-4">Направления</h2>
+              <div className="grid grid-cols-2 gap-3">
+                {Object.entries(categories).map(([key, value]: [string, any]) => {
+                  const isSelected = selectedCategories.includes(key)
+                  return (
                     <button
-                      key={color.hex}
-                      onClick={() => updateColor(color.hex)}
-                      className={`flex items-center space-x-2 p-2 border rounded-lg hover:bg-gray-50 ${supplier.color === color.hex ? 'border-blue-500 bg-blue-50' : ''}`}
+                      key={key}
+                      onClick={() => {
+                        if (!isAdmin) return
+                        const newCategories = isSelected
+                          ? selectedCategories.filter(c => c !== key)
+                          : [...selectedCategories, key]
+                        setSelectedCategories(newCategories)
+                        updateCategories(newCategories)
+                      }}
+                      disabled={!isAdmin}
+                      className={`p-3 border-2 rounded-lg transition ${
+                        isSelected ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+                      } ${!isAdmin ? 'cursor-default' : 'cursor-pointer'}`}
+                      style={useCategoryColors && isSelected ? { borderLeftWidth: '4px', borderLeftColor: value.color } : {}}
                     >
-                      <div className="w-6 h-6 rounded-full border" style={{ backgroundColor: color.hex }} />
-                      <span className="text-xs">{color.name}</span>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">{value.name}</span>
+                        {isSelected && <span className="text-blue-500">✓</span>}
+                      </div>
+                      {useCategoryColors && (
+                        <div className="w-full h-1 rounded mt-2" style={{ backgroundColor: value.color }} />
+                      )}
                     </button>
-                  ))}
-                </div>
-              )}
+                  )
+                })}
+              </div>
             </div>
 
             {/* Рейтинг */}
@@ -607,7 +642,7 @@ export default function SupplierDetailPage() {
                   </button>
                 )}
               </div>
-              
+
               {isAdmin && (
                 <div className="mb-3 flex space-x-2">
                   <input
@@ -642,7 +677,7 @@ export default function SupplierDetailPage() {
                   {tags.length > TAGS_PER_PAGE && (
                     <div className="flex flex-col space-y-2">
                       {hasMoreTags && !tagsExpanded && (
-                        <button 
+                        <button
                           onClick={loadMoreTags}
                           className="w-full px-4 py-2 text-sm text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 flex items-center justify-center space-x-1"
                         >
@@ -650,8 +685,8 @@ export default function SupplierDetailPage() {
                           <ChevronDown className="w-4 h-4" />
                         </button>
                       )}
-                      
-                      <button 
+
+                      <button
                         onClick={toggleTagsExpanded}
                         className="w-full px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 flex items-center justify-center space-x-1"
                       >
@@ -694,58 +729,59 @@ export default function SupplierDetailPage() {
                             <div className="bg-blue-500 h-2 rounded-full transition-all" style={{width: `${uploadProgress}%`}} />
                           </div>
                           <div className="text-xs text-center mt-1 text-gray-600">{uploadProgress}%</div>
-																											</div>
-																											)}
-																											<button onClick={handleFileUpload} disabled={uploading} className="w-full px-4 py-2 bg-blue-500 text-white rounded-lg disabled:opacity-50">
-																											{uploading ? 'Загрузка...' : 'Загрузить'}
-																											</button>
-																											</div>
-																											)}
-																											</div>
-																											)}
-																											<div className="space-y-2">
-            {imports.map((imp) => (
-              <div key={imp.id} className="p-3 bg-gray-50 rounded border">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex-1 truncate">
-                    <div className="text-sm font-medium truncate">{imp.file_name}</div>
-                    <div className="text-xs text-gray-500">{new Date(imp.created_at).toLocaleString('ru')}</div>
-                  </div>
-                  <div>
-                    {imp.status === 'processing' && <span className="text-xs text-yellow-600">⏳</span>}
-                    {imp.status === 'completed' && <span className="text-xs text-green-600">✓</span>}
-                    {imp.status === 'pending' && <span className="text-xs text-gray-600">⏸</span>}
-                  </div>
-                </div>
-
-                {imp.status === 'processing' && imp.total_products > 0 && (
-                  <div className="mb-2">
-                    <div className="w-full bg-gray-200 rounded-full h-1 mb-1">
-                      <div className="bg-green-500 h-1 rounded-full" style={{width: `${(imp.parsed_products / imp.total_products) * 100}%`}} />
+                        </div>
+                      )}
+                      <button onClick={handleFileUpload} disabled={uploading} className="w-full px-4 py-2 bg-blue-500 text-white rounded-lg disabled:opacity-50">
+                        {uploading ? 'Загрузка...' : 'Загрузить'}
+                      </button>
                     </div>
-                    <div className="text-xs text-gray-600">{imp.parsed_products} / {imp.total_products}</div>
-                  </div>
-                )}
-
-                <div className="flex items-center space-x-3">
-                  <button onClick={() => downloadFile(imp.id, imp.file_name)} className="text-xs text-blue-600 hover:underline flex items-center space-x-1">
-                    <Download className="w-3 h-3" />
-                    <span>Скачать</span>
-                  </button>
-                  {isAdmin && (
-                    <button onClick={() => deleteImport(imp.id)} className="text-xs text-red-600 hover:underline flex items-center space-x-1">
-                      <Trash2 className="w-3 h-3" />
-                      <span>Удалить</span>
-                    </button>
                   )}
                 </div>
+              )}
+
+              <div className="space-y-2">
+                {imports.map((imp) => (
+                  <div key={imp.id} className="p-3 bg-gray-50 rounded border">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex-1 truncate">
+                        <div className="text-sm font-medium truncate">{imp.file_name}</div>
+                        <div className="text-xs text-gray-500">{new Date(imp.created_at).toLocaleString('ru')}</div>
+                      </div>
+                      <div>
+                        {imp.status === 'processing' && <span className="text-xs text-yellow-600">⏳</span>}
+                        {imp.status === 'completed' && <span className="text-xs text-green-600">✓</span>}
+                        {imp.status === 'pending' && <span className="text-xs text-gray-600">⏸</span>}
+                      </div>
+                    </div>
+
+                    {imp.status === 'processing' && imp.total_products > 0 && (
+                      <div className="mb-2">
+                        <div className="w-full bg-gray-200 rounded-full h-1 mb-1">
+                          <div className="bg-green-500 h-1 rounded-full" style={{width: `${(imp.parsed_products / imp.total_products) * 100}%`}} />
+                        </div>
+                        <div className="text-xs text-gray-600">{imp.parsed_products} / {imp.total_products}</div>
+                      </div>
+                    )}
+
+                    <div className="flex items-center space-x-3">
+                      <button onClick={() => downloadFile(imp.id, imp.file_name)} className="text-xs text-blue-600 hover:underline flex items-center space-x-1">
+                        <Download className="w-3 h-3" />
+                        <span>Скачать</span>
+                      </button>
+                      {isAdmin && (
+                        <button onClick={() => deleteImport(imp.id)} className="text-xs text-red-600 hover:underline flex items-center space-x-1">
+                          <Trash2 className="w-3 h-3" />
+                          <span>Удалить</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  </div>
-</LayoutWithSidebar>
-)
+    </LayoutWithSidebar>
+  )
 }

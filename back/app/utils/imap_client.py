@@ -340,3 +340,49 @@ class IMAPClientPersonal:
                 decoded_parts.append(str(part))
 
         return ' '.join(decoded_parts)
+
+    def get_attachment(self, folder: str, msg_id: str, attachment_index: int) -> Optional[Dict]:
+        """Получить конкретное вложение из письма"""
+        try:
+            self.connect()
+
+            status, data = self.connection.select(f'"{folder}"', readonly=True)
+            if status != 'OK':
+                self.disconnect()
+                return None
+
+            status, msg_data = self.connection.fetch(msg_id.encode(), '(RFC822)')
+            if status != 'OK':
+                self.disconnect()
+                return None
+
+            raw_email = msg_data[0][1]
+            email_message = email.message_from_bytes(raw_email)
+
+            current_index = 0
+            if email_message.is_multipart():
+                for part in email_message.walk():
+                    content_disposition = str(part.get('Content-Disposition', ''))
+                    
+                    if 'attachment' in content_disposition:
+                        if current_index == attachment_index:
+                            filename = part.get_filename()
+                            content = part.get_payload(decode=True)
+                            content_type = part.get_content_type()
+                            
+                            self.disconnect()
+                            
+                            return {
+                                'filename': self._decode_header(filename) if filename else 'attachment',
+                                'content': content,
+                                'content_type': content_type
+                            }
+                        current_index += 1
+
+            self.disconnect()
+            return None
+
+        except Exception as e:
+            logger.error(f"Error getting attachment: {str(e)}")
+            self.disconnect()
+            return None

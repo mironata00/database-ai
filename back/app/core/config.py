@@ -398,10 +398,32 @@ class Settings(BaseSettings):
     CLAUDE_API_KEY: Optional[str] = Field(default=None, env="CLAUDE_API_KEY")
     CLAUDE_MODEL: str = Field(default="claude-sonnet-4-20250514", env="CLAUDE_MODEL")
     CLAUDE_MAX_TOKENS: int = Field(default=4096, env="CLAUDE_MAX_TOKENS")
+    
+    # Supplier Colors & Categories
+    USE_CATEGORY_COLORS: bool = Field(default=True, env="USE_CATEGORY_COLORS")
 
     class Config:
         env_file = ".env"
         case_sensitive = True
+
+
+# Константы категорий поставщиков с цветами
+SUPPLIER_CATEGORIES = {
+    "electrics": {"name": "Электрика", "color": "#FCD34D"},  # Желтый
+    "plumbing": {"name": "Сантехника", "color": "#60A5FA"},  # Голубой
+    "sewerage": {"name": "Канализация", "color": "#8B5CF6"},  # Фиолетовый
+    "tools": {"name": "Инструмент", "color": "#F87171"},  # Красный
+    "building_materials": {"name": "Стройматериалы", "color": "#34D399"},  # Зеленый
+    "heating": {"name": "Отопление", "color": "#FB923C"},  # Оранжевый
+    "ventilation": {"name": "Вентиляция", "color": "#A78BFA"},  # Светло-фиолетовый
+    "finishing": {"name": "Отделка", "color": "#F472B6"},  # Розовый
+    "roofing": {"name": "Кровля", "color": "#94A3B8"},  # Серый
+    "fasteners": {"name": "Крепеж", "color": "#64748B"},  # Темно-серый
+    "other": {"name": "Прочее", "color": "#6B7280"},  # Нейтральный серый
+}
+
+# Цвет по умолчанию для поставщиков с несколькими категориями
+MULTI_CATEGORY_COLOR = "#000000"  # Черный
 
 
 @lru_cache()

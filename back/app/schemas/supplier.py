@@ -23,6 +23,7 @@ class SupplierBase(BaseModel):
     payment_terms: Optional[str] = None
     min_order_sum: Optional[Decimal] = None
     notes: Optional[str] = None
+    categories: Optional[List[str]] = []
     color: Optional[str] = '#3B82F6'
 
     @validator('website', pre=True, always=True)
@@ -57,6 +58,7 @@ class SupplierUpdate(BaseModel):
     notes: Optional[str] = None
     rating: Optional[float] = None
     tags_array: Optional[List[str]] = None
+    categories: Optional[List[str]] = None
     color: Optional[str] = None
 
 
@@ -66,6 +68,7 @@ class SupplierResponse(SupplierBase):
     rating: Optional[float] = None
     is_blacklisted: bool = False
     tags_array: Optional[List[str]] = None
+    categories: Optional[List[str]] = []
     raw_data_url: Optional[str] = None
     import_source: Optional[str] = None
     color: str = '#3B82F6'
