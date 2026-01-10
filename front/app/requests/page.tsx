@@ -394,7 +394,7 @@ export default function RequestsPage() {
                     <div><span className="text-gray-500">Юр. адрес:</span> <span>{selectedRequest.data.legal_address}</span></div>
                     <div><span className="text-gray-500">Факт. адрес:</span> <span>{selectedRequest.data.actual_address}</span></div>
                     <div><span className="text-gray-500">Условия оплаты:</span> <span>{selectedRequest.data.payment_terms}</span></div>
-                    <div><span className="text-gray-500">Регионы:</span> <span>{selectedRequest.data.delivery_regions.join(', ')}</span></div>
+                    <div><span className="text-gray-500">Регионы:</span> <span>{selectedRequest.data.delivery_regions?.join(", ") || "Не указано"}</span></div>
                   </div>
                 </div>
 

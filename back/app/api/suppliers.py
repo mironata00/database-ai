@@ -219,12 +219,40 @@ async def search_suppliers_intelligent(
         reverse=True
     )
 
+
+    # Агрегация тегов из названий товаров
+    from collections import Counter
+    import re as regex_module
+    
+    tag_counter = Counter()
+    for product in all_products:
+        name = (product.get("name") or "").lower()
+        # Удаляем спецсимволы
+        name = regex_module.sub(r'[^\w\s]', ' ', name)
+        words = name.split()
+        
+        # Создаём n-граммы (1-3 слова)
+        for i in range(len(words)):
+            for length in range(1, 4):  # 1, 2, 3 слова
+                if i + length <= len(words):
+                    tag = ' '.join(words[i:i+length])
+                    if len(tag) >= 4:  # Минимум 4 символа
+                        tag_counter[tag] += 1
+    
+    # Топ-50 тегов (встречаются минимум 3 раза)
+    top_tags = [
+        {"tag": tag, "count": count} 
+        for tag, count in tag_counter.most_common(50) 
+        if count >= 3
+    ]
+
     return {
         "total": len(results),
         "query": q,
         "search_mode": "elasticsearch",
         "results": results[:limit],
-        "all_products": all_products  # Все найденные товары
+        "all_products": all_products,
+        "top_tags": top_tags  # Агрегированные теги
     }
 
 @router.get("/", response_model=SupplierListResponse)

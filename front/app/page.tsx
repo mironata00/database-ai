@@ -19,7 +19,7 @@ interface Supplier {
 }
 
 interface SearchSuggestion {
-  type: 'product' | 'category'
+  type: 'product' | 'category' | 'tag'
   name: string
   sku?: string
   supplier_id?: string
@@ -162,6 +162,7 @@ export default function HomePage() {
   const [searching, setSearching] = useState(false)
   const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([])
   const [showSuggestions, setShowSuggestions] = useState(false)
+  const [tagSuggestions, setTagSuggestions] = useState<SearchSuggestion[]>([])
   const [categorySuggestions, setCategorySuggestions] = useState<SearchSuggestion[]>([])
   const searchTimeoutRef = useRef<NodeJS.Timeout>()
   const searchRef = useRef<HTMLDivElement>(null)
@@ -224,6 +225,7 @@ export default function HomePage() {
   const performSearch = async (query: string) => {
     if (!query || query.length < 2) {
       setSuggestions([])
+      setTagSuggestions([])
       setCategorySuggestions([])
       setShowSuggestions(false)
       return
@@ -240,18 +242,57 @@ export default function HomePage() {
       if (response.ok) {
         const data = await response.json()
         
+        // Парсим теги (приоритет 1)
+        const tags = data.top_tags || []
+        const tagSuggestions: SearchSuggestion[] = tags.slice(0, 5).map((t: any) => ({
+          type: 'tag',
+          name: t.tag,
+          count: t.count
+        }))
+        setTagSuggestions(tagSuggestions)
+        
+        // Товары
         const allProducts = data.all_products || []
         const productSuggestions: SearchSuggestion[] = []
-        const seenProducts = new Set<string>()
-        const categories = new Map<string, number>()
+        const seenProducts = new Set<string>()        
+        // Категории - переводим ключи в названия
+        const catSuggestions: SearchSuggestion[] = []
+        const categoryMap: Record<string, string> = {}
         
+        // Загружаем маппинг категорий
+        try {
+          const catResponse = await fetch(`${API_URL}/api/suppliers/categories`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          })
+          if (catResponse.ok) {
+            const catData = await catResponse.json()
+            Object.entries(catData.categories || {}).forEach(([key, value]: [string, any]) => {
+              categoryMap[key] = value.name
+            })
+          }
+        } catch (e) {
+          console.error('Failed to load category names:', e)
+        }
+        
+        const categoryCount = new Map<string, number>()
         data.results.forEach((result: any) => {
           if (result.supplier_categories) {
-            result.supplier_categories.forEach((cat: string) => {
-              categories.set(cat, (categories.get(cat) || 0) + 1)
+            result.supplier_categories.forEach((catKey: string) => {
+              const catName = categoryMap[catKey] || catKey
+              categoryCount.set(catName, (categoryCount.get(catName) || 0) + 1)
             })
           }
         })
+        
+        categoryCount.forEach((count, name) => {
+          catSuggestions.push({
+            type: 'category',
+            name: name,
+            count: count
+          })
+        })
+        
+        setCategorySuggestions(catSuggestions.slice(0, 5))
         
         allProducts.forEach((product: any) => {
           const key = `${product.sku || ''}_${product.name}`
@@ -271,17 +312,7 @@ export default function HomePage() {
           }
         })
         
-        const catSuggestions: SearchSuggestion[] = []
-        categories.forEach((count, name) => {
-          catSuggestions.push({
-            type: 'category',
-            name: name,
-            count: count
-          })
-        })
-        
         setSuggestions(productSuggestions)
-        setCategorySuggestions(catSuggestions)
         setShowSuggestions(true)
       }
     } catch (error) {
@@ -305,6 +336,7 @@ export default function HomePage() {
       }, 500)
     } else {
       setSuggestions([])
+      setTagSuggestions([])
       setCategorySuggestions([])
       setShowSuggestions(false)
       setDisplayedSuppliers(suppliers)
@@ -314,7 +346,10 @@ export default function HomePage() {
   const handleSelectSuggestion = async (suggestion: SearchSuggestion) => {
     setSelectedProduct(suggestion)
     
-    if (suggestion.type === 'product') {
+    if (suggestion.type === 'tag') {
+      // Для тега - показываем всех поставщиков с товарами содержащими этот тег
+      setSearchQuery(suggestion.name)
+    } else if (suggestion.type === 'product') {
       setSearchQuery(suggestion.sku ? `${suggestion.sku} - ${suggestion.name}` : suggestion.name)
     } else {
       setSearchQuery(suggestion.name)
@@ -325,7 +360,7 @@ export default function HomePage() {
 
     try {
       const token = localStorage.getItem('access_token')
-      const searchTerm = suggestion.sku || suggestion.name
+      const searchTerm = suggestion.type === 'tag' ? suggestion.name : (suggestion.sku || suggestion.name)
       const response = await fetch(
         `${API_URL}/api/suppliers/search?q=${encodeURIComponent(searchTerm)}&limit=100`,
         { headers: { 'Authorization': `Bearer ${token}` } }
@@ -451,6 +486,8 @@ export default function HomePage() {
     s => s.email && s.status === 'ACTIVE' && !s.is_blacklisted
   )
 
+  const totalSuggestions = tagSuggestions.length + suggestions.length + categorySuggestions.length
+
   return (
     <LayoutWithSidebar>
       <main className="flex-1 overflow-auto">
@@ -464,18 +501,68 @@ export default function HomePage() {
                   className="w-full px-4 py-2 pr-10 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   value={searchQuery}
                   onChange={(e) => handleSearchChange(e.target.value)}
-                  onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
+                  onFocus={() => totalSuggestions > 0 && setShowSuggestions(true)}
                 />
                 <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
               </div>
 
-              {showSuggestions && (suggestions.length > 0 || categorySuggestions.length > 0) && (
+              {showSuggestions && totalSuggestions > 0 && (
                 <div className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-96 overflow-hidden flex flex-col">
                   <div className="flex-1 overflow-y-auto p-2">
+                    
+                    {/* ТЕГИ - ПРИОРИТЕТ 1 */}
+                    {tagSuggestions.length > 0 && (
+                      <>
+                        <div className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase bg-green-50">
+                          🏷️ Популярные теги ({tagSuggestions.length})
+                        </div>
+                        {tagSuggestions.map((suggestion, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => handleSelectSuggestion(suggestion)}
+                            className="w-full text-left px-3 py-2 hover:bg-green-50 rounded flex items-center justify-between border-l-2 border-green-500"
+                          >
+                            <span className="text-sm font-medium text-green-700">
+                              {highlightText(suggestion.name, searchQuery)}
+                            </span>
+                            {suggestion.count && (
+                              <span className="text-xs text-green-600 bg-green-100 px-2 py-0.5 rounded font-semibold">
+                                {suggestion.count} товаров
+                              </span>
+                            )}
+                          </button>
+                        ))}
+                      </>
+                    )}
+
+                    {/* КАТЕГОРИИ - ПРИОРИТЕТ 2 */}
+                    {categorySuggestions.length > 0 && (
+                      <>
+                        <div className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase mt-2">
+                          Категории
+                        </div>
+                        {categorySuggestions.map((suggestion, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => handleSelectSuggestion(suggestion)}
+                            className="w-full text-left px-3 py-2 hover:bg-gray-100 rounded flex items-center justify-between"
+                          >
+                            <span className="text-sm">{suggestion.name}</span>
+                            {suggestion.count && (
+                              <span className="text-xs text-gray-500 bg-gray-200 px-2 py-0.5 rounded">
+                                {suggestion.count}
+                              </span>
+                            )}
+                          </button>
+                        ))}
+                      </>
+                    )}
+
+                    {/* ТОВАРЫ - ПРИОРИТЕТ 3 */}
                     {suggestions.length > 0 && (
                       <>
-                        <div className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase">
-                          Похожие запросы ({suggestions.length})
+                        <div className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase mt-2">
+                          Конкретные товары ({suggestions.length})
                         </div>
                         {suggestions.slice(0, 5).map((suggestion, idx) => (
                           <button
@@ -498,28 +585,6 @@ export default function HomePage() {
                         ))}
                       </>
                     )}
-
-                    {categorySuggestions.length > 0 && (
-                      <>
-                        <div className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase mt-2">
-                          Категории
-                        </div>
-                        {categorySuggestions.map((suggestion, idx) => (
-                          <button
-                            key={idx}
-                            onClick={() => handleSelectSuggestion(suggestion)}
-                            className="w-full text-left px-3 py-2 hover:bg-gray-100 rounded flex items-center justify-between"
-                          >
-                            <span className="text-sm">{suggestion.name}</span>
-                            {suggestion.count && (
-                              <span className="text-xs text-gray-500 bg-gray-200 px-2 py-0.5 rounded">
-                                {suggestion.count}
-                              </span>
-                            )}
-                          </button>
-                        ))}
-                      </>
-                    )}
                   </div>
 
                   <div className="border-t p-2 flex justify-center">
@@ -530,7 +595,7 @@ export default function HomePage() {
                       }}
                       className="flex-1 px-3 py-2 text-sm text-center text-blue-600 hover:bg-blue-50 rounded"
                     >
-                      Посмотреть все ({suggestions.length})
+                      Посмотреть все ({totalSuggestions})
                     </button>
                   </div>
                 </div>
@@ -576,7 +641,7 @@ export default function HomePage() {
 
         <div className="p-8">
           <h1 className="text-2xl font-bold mb-6">
-            {selectedProduct ? `Поставщики с товаром: ${selectedProduct.name}` : 'Все поставщики'}
+            {selectedProduct ? `Поставщики: ${selectedProduct.name}` : 'Все поставщики'}
           </h1>
 
           {loading ? (
@@ -627,17 +692,60 @@ export default function HomePage() {
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg max-w-3xl w-full max-h-[80vh] overflow-hidden flex flex-col">
               <div className="p-4 border-b flex items-center justify-between">
-                <h2 className="text-xl font-bold">Результаты поиска: "{searchQuery}" ({suggestions.length})</h2>
+                <h2 className="text-xl font-bold">Результаты поиска: "{searchQuery}" ({totalSuggestions})</h2>
                 <button onClick={() => setShowAllResultsModal(false)}>
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
               <div className="flex-1 overflow-y-auto p-4">
+                {/* ТЕГИ */}
+                {tagSuggestions.length > 0 && (
+                  <>
+                    <h3 className="font-semibold mb-3 text-green-700">🏷️ Теги ({tagSuggestions.length})</h3>
+                    <div className="space-y-2 mb-6">
+                      {tagSuggestions.map((suggestion, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => handleSelectSuggestion(suggestion)}
+                          className="w-full text-left p-3 border-2 border-green-200 rounded-lg hover:bg-green-50 hover:border-green-400 transition flex justify-between items-center"
+                        >
+                          <span className="font-medium text-green-700">{highlightText(suggestion.name, searchQuery)}</span>
+                          <span className="text-sm text-green-600 bg-green-100 px-2 py-1 rounded font-semibold">
+                            {suggestion.count} товаров
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {/* КАТЕГОРИИ */}
+                {categorySuggestions.length > 0 && (
+                  <>
+                    <h3 className="font-semibold mb-3">Категории</h3>
+                    <div className="space-y-2 mb-6">
+                      {categorySuggestions.map((suggestion, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => handleSelectSuggestion(suggestion)}
+                          className="w-full text-left p-3 border rounded-lg hover:bg-blue-50 hover:border-blue-300 transition flex justify-between items-center"
+                        >
+                          <span>{suggestion.name}</span>
+                          <span className="text-sm text-gray-500 bg-gray-200 px-2 py-1 rounded">
+                            {suggestion.count} товаров
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {/* ТОВАРЫ */}
                 {suggestions.length > 0 && (
                   <>
                     <h3 className="font-semibold mb-3">Товары ({suggestions.length})</h3>
-                    <div className="space-y-2 mb-6">
+                    <div className="space-y-2">
                       {suggestions.map((suggestion, idx) => (
                         <button
                           key={idx}
@@ -655,26 +763,6 @@ export default function HomePage() {
                               Поставщик: {suggestion.supplier_name}
                             </div>
                           )}
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                )}
-
-                {categorySuggestions.length > 0 && (
-                  <>
-                    <h3 className="font-semibold mb-3">Категории</h3>
-                    <div className="space-y-2">
-                      {categorySuggestions.map((suggestion, idx) => (
-                        <button
-                          key={idx}
-                          onClick={() => handleSelectSuggestion(suggestion)}
-                          className="w-full text-left p-3 border rounded-lg hover:bg-blue-50 hover:border-blue-300 transition flex justify-between items-center"
-                        >
-                          <span>{suggestion.name}</span>
-                          <span className="text-sm text-gray-500 bg-gray-200 px-2 py-1 rounded">
-                            {suggestion.count} товаров
-                          </span>
                         </button>
                       ))}
                     </div>
