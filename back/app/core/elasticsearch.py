@@ -415,6 +415,33 @@ class ElasticsearchManager:
 
         return response
 
+    async def update_supplier_tags(self, supplier_id: str, tags: list) -> dict:
+        """Обновить теги у всех товаров поставщика в индексе"""
+        try:
+            response = await self.client.update_by_query(
+                index=settings.ES_INDEX_PRODUCTS,
+                body={
+                    "query": {
+                        "term": {"supplier_id": supplier_id}
+                    },
+                    "script": {
+                        "source": "ctx._source.tags = params.tags",
+                        "params": {"tags": tags},
+                        "lang": "painless"
+                    }
+                },
+                refresh=True
+            )
+            
+            updated = response.get("updated", 0)
+            logger.info(f"Updated tags for {updated} products of supplier {supplier_id}")
+            return {"updated": updated}
+            
+        except Exception as e:
+            logger.error(f"Error updating tags for supplier {supplier_id}: {e}")
+            return {"updated": 0, "error": str(e)}
+
+
     async def close(self):
         """Close Elasticsearch connection."""
         if self.client:

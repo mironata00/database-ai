@@ -1,3 +1,5 @@
+import logging
+logger = logging.getLogger(__name__)
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Query
 from app.models.product_import import ProductImport
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -185,6 +187,29 @@ async def search_suppliers_intelligent(
             ]
         }
 
+    # ДОПОЛНИТЕЛЬНО: Ищем поставщиков по тегам в БД (даже если ES что-то нашел)
+    query_pattern = f"%{q.lower()}%"
+    result_tags = await db.execute(
+        select(Supplier).where(
+            or_(
+                Supplier.name.ilike(query_pattern),
+                func.array_to_string(Supplier.tags_array, ',').ilike(query_pattern)
+            )
+        )
+    )
+    suppliers_by_tags = result_tags.scalars().all()
+    
+    # Добавляем их в supplier_stats если их там еще нет
+    for supplier in suppliers_by_tags:
+        supplier_id_str = str(supplier.id)
+        if supplier_id_str not in supplier_stats:
+            supplier_stats[supplier_id_str] = {
+                "matched_count": 0,
+                "max_score": 100.0,  # Высокий score для точного совпадения тега
+                "example_products": [],
+                "matched_by_tag": True  # Флаг что найдено по тегу
+            }
+
     supplier_ids_list = list(supplier_stats.keys())
     result = await db.execute(
         select(Supplier).where(Supplier.id.in_(supplier_ids_list))
@@ -195,6 +220,9 @@ async def search_suppliers_intelligent(
     for supplier_id, stats in supplier_stats.items():
         supplier = suppliers.get(supplier_id)
         if supplier:
+            # Определяем тип совпадения
+            match_type = "supplier_tags" if stats.get("matched_by_tag") else "products"
+            
             results.append({
                 "supplier_id": supplier_id,
                 "supplier_name": supplier.name,
@@ -207,24 +235,25 @@ async def search_suppliers_intelligent(
                 "matched_products": stats["matched_count"],
                 "max_score": stats["max_score"],
                 "example_products": stats["example_products"],
-                "match_type": "products"
+                "match_type": match_type
             })
 
     # Сортировка: сначала по рейтингу (если есть), потом по релевантности
     results.sort(
         key=lambda x: (
             x["supplier_rating"] if x["supplier_rating"] is not None else -1,  # По рейтингу
-            x["max_score"] * x["matched_products"]  # Потом по релевантности
+            x["max_score"] * max(x["matched_products"], 1)  # Потом по релевантности
         ), 
         reverse=True
     )
 
-
-    # Агрегация тегов из названий товаров
+    # Агрегация тегов из названий товаров С ПРИОРИТЕТОМ ПО РЕЛЕВАНТНОСТИ
     from collections import Counter
     import re as regex_module
     
     tag_counter = Counter()
+    
+    # Собираем теги из названий товаров
     for product in all_products:
         name = (product.get("name") or "").lower()
         # Удаляем спецсимволы
@@ -236,15 +265,68 @@ async def search_suppliers_intelligent(
             for length in range(1, 4):  # 1, 2, 3 слова
                 if i + length <= len(words):
                     tag = ' '.join(words[i:i+length])
-                    if len(tag) >= 4:  # Минимум 4 символа
+                    if len(tag) >= 3:  # Минимум 3 символа (было 4)
                         tag_counter[tag] += 1
     
-    # Топ-50 тегов (встречаются минимум 3 раза)
-    top_tags = [
-        {"tag": tag, "count": count} 
-        for tag, count in tag_counter.most_common(50) 
-        if count >= 3
-    ]
+    # Собираем теги от поставщиков, найденных по tags_array
+    for supplier_id, stats in supplier_stats.items():
+        if stats.get("matched_by_tag"):
+            supplier = suppliers.get(supplier_id)
+            if supplier and supplier.tags_array:
+                for tag in supplier.tags_array:
+                    if len(tag) >= 3:
+                        tag_counter[tag] += 50  # Бонус для тегов поставщика
+    
+    # Функция расчета релевантности тега к запросу
+    def calculate_tag_relevance(tag, query_lower, query_words):
+        tag_lower = tag.lower()
+        
+        # 1. Точное совпадение всего запроса
+        if tag_lower == query_lower:
+            return 1000
+        
+        # 2. Точное совпадение в начале
+        if tag_lower.startswith(query_lower):
+            return 900
+        
+        # 3. Запрос содержится в теге
+        if query_lower in tag_lower:
+            return 800
+        
+        # 4. Все слова запроса есть в теге (в любом порядке)
+        tag_words = set(tag_lower.split())
+        if query_words.issubset(tag_words):
+            return 700
+        
+        # 5. Большинство слов совпадает
+        matching_words = len(query_words & tag_words)
+        if matching_words > 0:
+            return 500 + (matching_words * 50)
+        
+        # 6. Частичное совпадение хотя бы одного слова
+        for qword in query_words:
+            for tword in tag_words:
+                if qword in tword or tword in qword:
+                    return 300
+        
+        return 0
+    
+    # Сортируем теги: сначала по релевантности, потом по частоте
+    tags_with_score = []
+    for tag, count in tag_counter.items():
+        if count >= 3:  # Минимум 3 упоминания
+            relevance = calculate_tag_relevance(tag, query_lower, query_words)
+            tags_with_score.append({
+                "tag": tag,
+                "count": count,
+                "relevance": relevance
+            })
+    
+    # Сортировка: сначала релевантность, потом частота
+    tags_with_score.sort(key=lambda x: (x["relevance"], x["count"]), reverse=True)
+    
+    # Топ-50 тегов
+    top_tags = tags_with_score[:50]
 
     return {
         "total": len(results),
@@ -327,6 +409,18 @@ async def patch_supplier(supplier_id: UUID, supplier_data: SupplierUpdate, db: A
 
     await db.commit()
     await db.refresh(supplier)
+
+    # ОБНОВЛЯЕМ ТЕГИ В ELASTICSEARCH (не переиндексируем всё!)
+    if 'tags_array' in update_data and settings.SEARCH_ELASTICSEARCH_ENABLED:
+        try:
+            result = await es_manager.update_supplier_tags(
+                str(supplier_id),
+                supplier.tags_array or []
+            )
+            logger.info(f"Updated tags in ES for {supplier.name}: {result.get('updated', 0)} products")
+        except Exception as e:
+            logger.error(f"Ошибка обновления тегов в ES: {e}")
+
     return SupplierResponse.from_orm(supplier)
 
 @router.delete("/{supplier_id}")
@@ -481,30 +575,3 @@ async def delete_import(supplier_id: UUID, import_id: UUID, db: AsyncSession = D
     await db.commit()
 
     return {"deleted": True}
-
-@router.delete("/{supplier_id}")
-async def delete_supplier(supplier_id: UUID, db: AsyncSession = Depends(get_db)):
-    """Удалить поставщика и все связанные данные"""
-    result = await db.execute(select(Supplier).where(Supplier.id == supplier_id))
-    supplier = result.scalar_one_or_none()
-    if not supplier:
-        raise HTTPException(status_code=404, detail="Supplier not found")
-    
-    # Удаляем файлы импортов
-    import os
-    result_imports = await db.execute(
-        select(ProductImport).where(ProductImport.supplier_id == supplier_id)
-    )
-    imports = result_imports.scalars().all()
-    for imp in imports:
-        if imp.file_url and os.path.exists(imp.file_url):
-            try:
-                os.remove(imp.file_url)
-            except Exception:
-                pass
-    
-    # Удаляем поставщика (cascade удалит связанные данные)
-    await db.delete(supplier)
-    await db.commit()
-    
-    return {"deleted": True, "supplier_id": str(supplier_id), "name": supplier.name}

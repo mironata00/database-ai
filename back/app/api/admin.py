@@ -63,7 +63,7 @@ async def reindex_all_products(
                         "name": product.name or "",
                         "brand": product.brand or "",
                         "category": product.category or "",
-                        "tags": [],
+                        "tags": supplier.tags_array or [],  # ТЕГИ ПОСТАВЩИКА
                         "price": float(product.price) if product.price else None,
                         "unit": product.unit or "",
                         "raw_text": product.raw_text or "",
