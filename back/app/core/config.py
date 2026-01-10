@@ -307,6 +307,14 @@ class Settings(BaseSettings):
     PRICE_REQUEST_DELAY_BETWEEN_EMAILS: int = Field(env="PRICE_REQUEST_DELAY_BETWEEN_EMAILS")
     PRICE_REQUEST_REPLY_TO_EMAIL: str = Field(env="PRICE_REQUEST_REPLY_TO_EMAIL")
 
+    # Claude API
+    CLAUDE_API_KEY: Optional[str] = Field(default=None, env="CLAUDE_API_KEY")
+    CLAUDE_MODEL: str = Field(default="claude-sonnet-4-20250514", env="CLAUDE_MODEL")
+    CLAUDE_MAX_TOKENS: int = Field(default=4096, env="CLAUDE_MAX_TOKENS")
+
+    # Supplier Colors & Categories
+    USE_CATEGORY_COLORS: bool = Field(default=True, env="USE_CATEGORY_COLORS")
+
     @property
     def DATABASE_URL(self) -> str:
         return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
@@ -394,36 +402,47 @@ class Settings(BaseSettings):
         env_file = ".env"
         case_sensitive = True
 
-    # Claude API
-    CLAUDE_API_KEY: Optional[str] = Field(default=None, env="CLAUDE_API_KEY")
-    CLAUDE_MODEL: str = Field(default="claude-sonnet-4-20250514", env="CLAUDE_MODEL")
-    CLAUDE_MAX_TOKENS: int = Field(default=4096, env="CLAUDE_MAX_TOKENS")
-    
-    # Supplier Colors & Categories
-    USE_CATEGORY_COLORS: bool = Field(default=True, env="USE_CATEGORY_COLORS")
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
-
-
-# Константы категорий поставщиков с цветами
+# Новые 35 категорий поставщиков
 SUPPLIER_CATEGORIES = {
-    "electrics": {"name": "Электрика", "color": "#FCD34D"},  # Желтый
-    "plumbing": {"name": "Сантехника", "color": "#60A5FA"},  # Голубой
-    "sewerage": {"name": "Канализация", "color": "#8B5CF6"},  # Фиолетовый
-    "tools": {"name": "Инструмент", "color": "#F87171"},  # Красный
-    "building_materials": {"name": "Стройматериалы", "color": "#34D399"},  # Зеленый
-    "heating": {"name": "Отопление", "color": "#FB923C"},  # Оранжевый
-    "ventilation": {"name": "Вентиляция", "color": "#A78BFA"},  # Светло-фиолетовый
-    "finishing": {"name": "Отделка", "color": "#F472B6"},  # Розовый
-    "roofing": {"name": "Кровля", "color": "#94A3B8"},  # Серый
-    "fasteners": {"name": "Крепеж", "color": "#64748B"},  # Темно-серый
-    "other": {"name": "Прочее", "color": "#6B7280"},  # Нейтральный серый
+    "tools": {"name": "Инструмент", "color": "#EF4444"},
+    "electrics": {"name": "Электрика и свет", "color": "#FCD34D"},
+    "hand_tools": {"name": "Ручной инструмент", "color": "#F87171"},
+    "plumbing": {"name": "Сантехника и инженерные системы", "color": "#60A5FA"},
+    "garden": {"name": "Всё для сада", "color": "#34D399"},
+    "power_equipment": {"name": "Силовая техника", "color": "#FB923C"},
+    "auto": {"name": "Автотовары", "color": "#64748B"},
+    "fasteners": {"name": "Крепёж и фурнитура", "color": "#94A3B8"},
+    "building_materials": {"name": "Отделочные и стройматериалы", "color": "#A78BFA"},
+    "office_home": {"name": "Офис и дом", "color": "#F472B6"},
+    "warehouse_equipment": {"name": "Оборудование для склада", "color": "#818CF8"},
+    "machines": {"name": "Станки и промкомпоненты", "color": "#475569"},
+    "climate": {"name": "Климат, отопление и вентиляция", "color": "#06B6D4"},
+    "ppe": {"name": "Спецодежда и СИЗ", "color": "#FACC15"},
+    "cleaning": {"name": "Клининг и химия", "color": "#A855F7"},
+    "construction_equipment": {"name": "Строительное оборудование", "color": "#F97316"},
+    "sports": {"name": "Спорт и туризм", "color": "#10B981"},
+    "consumables": {"name": "Расходные материалы", "color": "#D946EF"},
+    "fire_safety": {"name": "Пожарное оборудование", "color": "#DC2626"},
+    "metal": {"name": "Металлопрокат", "color": "#71717A"},
+    "oils": {"name": "Масла, смазки", "color": "#CA8A04"},
+    "doors": {"name": "Двери", "color": "#92400E"},
+    "mounting_structures": {"name": "Монтажные конструкции", "color": "#52525B"},
+    "furniture": {"name": "Мебель", "color": "#BE185D"},
+    "appliances": {"name": "Бытовая техника", "color": "#0EA5E9"},
+    "stationery": {"name": "Канцтовары", "color": "#8B5CF6"},
+    "paints": {"name": "Лакокрасочные материалы", "color": "#EC4899"},
+    "industrial_components": {"name": "Производственные компоненты и материалы", "color": "#6366F1"},
+    "aggregates": {"name": "Нерудные материалы", "color": "#78716C"},
+    "concrete": {"name": "Бетон, асфальтобетон", "color": "#57534E"},
+    "dry_mixes": {"name": "Сухие строительные смеси", "color": "#A8A29E"},
+    "lumber": {"name": "Пиломатериалы", "color": "#B45309"},
+    "security_systems": {"name": "Охранные системы, видеонаблюдение", "color": "#1E40AF"},
+    "logistics": {"name": "Логистика и транспорт", "color": "#065F46"},
+    "perimeter_security": {"name": "Средства охраны периметра", "color": "#991B1B"},
 }
 
-# Цвет по умолчанию для поставщиков с несколькими категориями
-MULTI_CATEGORY_COLOR = "#000000"  # Черный
+MULTI_CATEGORY_COLOR = "#000000"
 
 
 @lru_cache()

@@ -31,6 +31,7 @@ interface SearchSuggestion {
 // Простой стемминг для русского языка (убираем окончания)
 const stem = (word: string): string => {
   const lower = word.toLowerCase()
+  // Убираем распространённые окончания
   const endings = ['ая', 'яя', 'ой', 'ый', 'ий', 'ые', 'ие', 'ого', 'его', 'ому', 'ему', 'ым', 'им', 'ых', 'их', 'ую', 'юю', 'ою', 'ею', 'ав', 'ев', 'ов', 'ев', 'ая', 'яя']
   
   for (const ending of endings) {
@@ -39,6 +40,7 @@ const stem = (word: string): string => {
     }
   }
   
+  // Убираем последние 1-2 символа для других окончаний
   if (lower.length > 4) {
     return lower.slice(0, -1)
   }
@@ -46,7 +48,7 @@ const stem = (word: string): string => {
   return lower
 }
 
-// Расстояние Левенштейна
+// Расстояние Левенштейна (для опечаток)
 const levenshtein = (a: string, b: string): number => {
   const matrix: number[][] = []
   
@@ -75,13 +77,15 @@ const levenshtein = (a: string, b: string): number => {
   return matrix[b.length][a.length]
 }
 
-// Fuzzy match
+// Улучшенный fuzzy match с стеммингом и опечатками
 const fuzzyMatch = (text: string, query: string): boolean => {
   const textLower = text.toLowerCase()
   const queryLower = query.toLowerCase()
   
+  // 1. Точное совпадение
   if (textLower.includes(queryLower)) return true
   
+  // 2. Проверка по словам с стеммингом
   const textWords = textLower.split(/\s+/)
   const queryWords = queryLower.split(/\s+/)
   
@@ -91,15 +95,18 @@ const fuzzyMatch = (text: string, query: string): boolean => {
     for (const tWord of textWords) {
       const tStem = stem(tWord)
       
+      // Совпадение корней
       if (qStem.length >= 3 && tStem.startsWith(qStem)) return true
       if (tStem.length >= 3 && qStem.startsWith(tStem)) return true
       
+      // Расстояние Левенштейна для опечаток (макс 2 символа)
       if (qWord.length >= 4 && tWord.length >= 4) {
         const dist = levenshtein(qWord, tWord)
         const maxDist = Math.floor(Math.max(qWord.length, tWord.length) * 0.3)
         if (dist <= maxDist && dist <= 2) return true
       }
       
+      // Проверка корней с опечатками
       if (qStem.length >= 3 && tStem.length >= 3) {
         const dist = levenshtein(qStem, tStem)
         if (dist <= 1) return true
@@ -110,7 +117,7 @@ const fuzzyMatch = (text: string, query: string): boolean => {
   return false
 }
 
-// Подсветка
+// Подсветка с учётом fuzzy match
 const highlightText = (text: string, query: string) => {
   if (!query || !text) return text
   
@@ -119,6 +126,7 @@ const highlightText = (text: string, query: string) => {
   const queryStem = stem(queryLower)
   
   return words.map((word, i) => {
+    // Пропускаем пробелы и знаки препинания
     if (/^\s+$/.test(word) || /^[.,;:!?()«»]+$/.test(word)) {
       return <span key={i}>{word}</span>
     }
@@ -126,14 +134,20 @@ const highlightText = (text: string, query: string) => {
     const wordLower = word.toLowerCase()
     const wordStem = stem(wordLower)
     
+    // 1. Точное совпадение
     if (wordLower.includes(queryLower)) {
       return <strong key={i}>{word}</strong>
     }
     
-    if (queryStem.length >= 3 && (wordStem.startsWith(queryStem) || queryStem.startsWith(wordStem))) {
+    // 2. Совпадение корней
+    if (queryStem.length >= 3 && (
+      wordStem.startsWith(queryStem) || 
+      queryStem.startsWith(wordStem)
+    )) {
       return <strong key={i}>{word}</strong>
     }
     
+    // 3. Опечатки
     if (queryLower.length >= 4 && wordLower.length >= 4) {
       const dist = levenshtein(queryLower, wordLower)
       const maxDist = Math.floor(Math.max(queryLower.length, wordLower.length) * 0.3)
@@ -142,6 +156,7 @@ const highlightText = (text: string, query: string) => {
       }
     }
     
+    // 4. Опечатки в корнях
     if (queryStem.length >= 3 && wordStem.length >= 3) {
       const dist = levenshtein(queryStem, wordStem)
       if (dist <= 1) {
@@ -168,6 +183,7 @@ export default function HomePage() {
   const [userRole, setUserRole] = useState<string>('')
   const [selectedProduct, setSelectedProduct] = useState<SearchSuggestion | null>(null)
   
+  // Модальные окна
   const [showAllResultsModal, setShowAllResultsModal] = useState(false)
   const [showEmailModal, setShowEmailModal] = useState(false)
   const [selectedSuppliers, setSelectedSuppliers] = useState<string[]>([])
@@ -623,6 +639,7 @@ export default function HomePage() {
           )}
         </div>
 
+        {/* Модальное окно "Все результаты поиска" */}
         {showAllResultsModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg max-w-3xl w-full max-h-[80vh] overflow-hidden flex flex-col">
@@ -685,6 +702,13 @@ export default function HomePage() {
           </div>
         )}
 
+        {/* Email Modal - оставляем как есть */}
+      </main>
+    </LayoutWithSidebar>
+  )
+}
+
+        {/* Модальное окно отправки писем */}
         {showEmailModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">

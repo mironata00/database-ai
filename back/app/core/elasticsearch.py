@@ -11,7 +11,7 @@ class ElasticsearchManager:
     def __init__(self):
         self.client: Optional[AsyncElasticsearch] = None
         self._initialize_client()
-    
+
     def _initialize_client(self):
         """Initialize Elasticsearch client."""
         es_config = {
@@ -20,16 +20,16 @@ class ElasticsearchManager:
             "max_retries": settings.ES_MAX_RETRIES,
             "retry_on_timeout": True,
         }
-        
+
         if settings.ES_SECURITY_ENABLED:
             es_config["basic_auth"] = (settings.ES_USERNAME, settings.ES_PASSWORD)
-        
+
         self.client = AsyncElasticsearch(**es_config)
-    
+
     async def create_products_index(self):
         """Create products index with mappings."""
         index_name = settings.ES_INDEX_PRODUCTS
-        
+
         mappings = {
             "properties": {
                 "supplier_id": {"type": "keyword"},
@@ -53,6 +53,10 @@ class ElasticsearchManager:
                     "fields": {
                         "exact": {"type": "keyword"},
                         "suggest": {"type": "completion"},
+                        "prefix": {
+                            "type": "text",
+                            "analyzer": "prefix_analyzer",
+                        },
                         "transliterated": {
                             "type": "text",
                             "analyzer": "transliteration_analyzer"
@@ -98,7 +102,7 @@ class ElasticsearchManager:
                 "last_updated": {"type": "date"},
             }
         }
-        
+
         settings_config = {
             "number_of_shards": settings.ES_INDEX_SHARDS,
             "number_of_replicas": settings.ES_INDEX_REPLICAS,
@@ -136,6 +140,11 @@ class ElasticsearchManager:
                         "tokenizer": "standard",
                         "filter": ["lowercase", "sku_ngram"],
                     },
+                    "prefix_analyzer": {
+                        "type": "custom",
+                        "tokenizer": "standard",
+                        "filter": ["lowercase", "prefix_ngram"],
+                    },
                     "transliteration_analyzer": {
                         "type": "custom",
                         "char_filter": ["transliteration_map"],
@@ -161,6 +170,11 @@ class ElasticsearchManager:
                         "min_gram": 3,
                         "max_gram": 15,
                     },
+                    "prefix_ngram": {
+                        "type": "edge_ngram",
+                        "min_gram": 3,
+                        "max_gram": 15,
+                    },
                 },
                 "normalizer": {
                     "lowercase_normalizer": {
@@ -170,18 +184,18 @@ class ElasticsearchManager:
                 },
             },
         }
-        
+
         if await self.client.indices.exists(index=index_name):
             logger.info(f"Index {index_name} already exists")
             return
-        
+
         await self.client.indices.create(
             index=index_name,
             mappings=mappings,
             settings=settings_config,
         )
         logger.info(f"Created index {index_name}")
-    
+
     async def bulk_index_products(
         self, products: List[Dict[str, Any]], supplier_id: str
     ) -> Dict[str, int]:
@@ -194,31 +208,31 @@ class ElasticsearchManager:
             }
             for i, product in enumerate(products)
         ]
-        
+
         success, failed = await async_bulk(
             self.client,
             actions,
             chunk_size=settings.ES_BULK_SIZE,
             request_timeout=settings.ES_BULK_TIMEOUT,
         )
-        
+
         logger.info(
             f"Indexed {success} products for supplier {supplier_id}, {failed} failed"
         )
-        
+
         return {"success": success, "failed": failed}
-    
+
     async def delete_supplier_products(self, supplier_id: str) -> int:
         """Delete all products for a supplier."""
         response = await self.client.delete_by_query(
             index=settings.ES_INDEX_PRODUCTS,
             body={"query": {"term": {"supplier_id": supplier_id}}},
         )
-        
+
         deleted = response.get("deleted", 0)
         logger.info(f"Deleted {deleted} products for supplier {supplier_id}")
         return deleted
-    
+
     async def search_products(
         self,
         query: str,
@@ -226,17 +240,14 @@ class ElasticsearchManager:
         size: int = 1000,
     ) -> Dict[str, Any]:
         """
-        ИНТЕЛЛЕКТУАЛЬНЫЙ ПОИСК с максимальными возможностями:
-        - Fuzzy matching (опечатки)
-        - Стемминг (склонения и окончания)
-        - Транслитерация (английская раскладка)
-        - N-gram поиск по SKU
-        - Wildcard для частичного совпадения
-        - Phrase matching для точных фраз
+        ЖИВОЙ ПОИСК (аналог Cart-Power):
+        - Prefix match (начало слова): лобз → лобзик ✅
+        - Wildcard (середина слова): лобз → электроЛОБЗик ✅
+        - Баланс приоритетов: prefix выше, wildcard ниже
         """
-        
+
         should_clauses = [
-            # 1. ТОЧНОЕ совпадение SKU (максимальный приоритет)
+            # 1. ТОЧНОЕ совпадение SKU
             {
                 "term": {
                     "sku": {
@@ -245,8 +256,8 @@ class ElasticsearchManager:
                     }
                 }
             },
-            
-            # 2. N-GRAM поиск по SKU (частичное совпадение)
+
+            # 2. PREFIX по SKU
             {
                 "match": {
                     "sku.ngram": {
@@ -255,8 +266,8 @@ class ElasticsearchManager:
                     }
                 }
             },
-            
-            # 3. БРЕНД - точное совпадение
+
+            # 3. БРЕНД точное
             {
                 "term": {
                     "brand": {
@@ -265,8 +276,8 @@ class ElasticsearchManager:
                     }
                 }
             },
-            
-            # 4. БРЕНД - с fuzzy (опечатки)
+
+            # 4. БРЕНД fuzzy
             {
                 "match": {
                     "brand.text": {
@@ -276,30 +287,40 @@ class ElasticsearchManager:
                     }
                 }
             },
-            
-            # 5. НАЗВАНИЕ - с fuzzy и стеммингом
+
+            # 5. НАЗВАНИЕ - PREFIX (начало слова: лобзик)
+            {
+                "match": {
+                    "name.prefix": {
+                        "query": query,
+                        "boost": settings.ES_SEARCH_BOOST_NAME * 4.0,
+                    }
+                }
+            },
+
+            # 6. НАЗВАНИЕ - обычный поиск с fuzzy
             {
                 "match": {
                     "name": {
                         "query": query,
                         "fuzziness": "AUTO",
                         "operator": "or",
-                        "boost": settings.ES_SEARCH_BOOST_NAME,
+                        "boost": settings.ES_SEARCH_BOOST_NAME * 2.0,
                     }
                 }
             },
-            
-            # 6. НАЗВАНИЕ - точная фраза (повышенный приоритет)
+
+            # 7. НАЗВАНИЕ - точная фраза
             {
                 "match_phrase": {
                     "name": {
                         "query": query,
-                        "boost": settings.ES_SEARCH_BOOST_NAME * 2,
+                        "boost": settings.ES_SEARCH_BOOST_NAME * 5,
                     }
                 }
             },
-            
-            # 7. ТРАНСЛИТЕРАЦИЯ - английская раскладка -> русская
+
+            # 8. ТРАНСЛИТЕРАЦИЯ
             {
                 "match": {
                     "name.transliterated": {
@@ -309,8 +330,8 @@ class ElasticsearchManager:
                     }
                 }
             },
-            
-            # 8. ТЕГИ - с стеммингом
+
+            # 9. ТЕГИ
             {
                 "match": {
                     "tags": {
@@ -320,8 +341,8 @@ class ElasticsearchManager:
                     }
                 }
             },
-            
-            # 9. КАТЕГОРИЯ - с fuzzy
+
+            # 10. КАТЕГОРИЯ
             {
                 "match": {
                     "category.text": {
@@ -331,18 +352,18 @@ class ElasticsearchManager:
                     }
                 }
             },
-            
-            # 10. WILDCARD поиск для частичного совпадения
+
+            # 11. WILDCARD для середины слова (электроЛОБЗик)
             {
                 "wildcard": {
                     "name": {
                         "value": f"*{query.lower()}*",
-                        "boost": 1.0,
+                        "boost": 1.5,
                     }
                 }
             },
-            
-            # 11. RAW TEXT - полнотекстовый поиск
+
+            # 12. RAW TEXT
             {
                 "match": {
                     "raw_text": {
@@ -353,7 +374,7 @@ class ElasticsearchManager:
                 }
             },
         ]
-        
+
         filter_clauses = []
         if filters:
             if filters.get("supplier_ids"):
@@ -375,7 +396,7 @@ class ElasticsearchManager:
                 if filters.get("max_price"):
                     price_range["lte"] = filters["max_price"]
                 filter_clauses.append({"range": {"price": price_range}})
-        
+
         search_body = {
             "query": {
                 "bool": {
@@ -387,13 +408,13 @@ class ElasticsearchManager:
             "min_score": settings.ES_SEARCH_MIN_SCORE,
             "size": size,
         }
-        
+
         response = await self.client.search(
             index=settings.ES_INDEX_PRODUCTS, body=search_body
         )
-        
+
         return response
-    
+
     async def close(self):
         """Close Elasticsearch connection."""
         if self.client:

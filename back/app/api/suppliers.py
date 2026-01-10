@@ -14,12 +14,11 @@ from uuid import UUID
 router = APIRouter()
 
 @router.get("/categories")
-async def get_supplier_categories():
-    """Получить список доступных категорий поставщиков с цветами"""
+async def get_categories():
+    """Получить список всех категорий с цветами"""
     return {
         "categories": SUPPLIER_CATEGORIES,
-        "multi_category_color": MULTI_CATEGORY_COLOR,
-        "use_category_colors": settings.USE_CATEGORY_COLORS
+        "multi_category_color": MULTI_CATEGORY_COLOR
     }
 
 def get_supplier_display_color(categories: List[str]) -> str:
