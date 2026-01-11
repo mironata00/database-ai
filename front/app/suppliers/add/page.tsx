@@ -31,6 +31,8 @@ export default function AddSupplierPage() {
     website: '',
     legal_address: '',
     actual_address: '',
+    postal_address: '',
+    edo: '',
     contact_person: '',
     contact_position: '',
     contact_phone: '',
@@ -88,6 +90,8 @@ export default function AddSupplierPage() {
       if (formData.website) payload.website = formData.website
       if (formData.legal_address) payload.legal_address = formData.legal_address
       if (formData.actual_address) payload.actual_address = formData.actual_address
+      if (formData.postal_address) payload.postal_address = formData.postal_address
+      if (formData.edo) payload.edo = formData.edo
       if (formData.contact_person) payload.contact_person = formData.contact_person
       if (formData.contact_position) payload.contact_position = formData.contact_position
       if (formData.contact_phone) payload.contact_phone = formData.contact_phone
@@ -408,6 +412,29 @@ export default function AddSupplierPage() {
                     value={formData.actual_address}
                     onChange={handleChange}
                     rows={2}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">Почтовый адрес</label>
+                  <textarea
+                    name="postal_address"
+                    value={formData.postal_address}
+                    onChange={handleChange}
+                    rows={2}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">ЭДО</label>
+                  <input
+                    type="text"
+                    name="edo"
+                    value={formData.edo}
+                    onChange={handleChange}
+                    placeholder="Диадок, СБИС, Контур и т.д."
                     className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                   />
                 </div>

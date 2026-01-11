@@ -88,6 +88,17 @@ class MinIOClient:
         except S3Error as e:
             logger.error(f"Error downloading from MinIO: {e}")
             return None
+
+    def get_file(self, bucket: str, object_name: str) -> Optional[bytes]:
+        """
+        Получить файл из MinIO (alias для download_file)
+        Args:
+            bucket: Название бакета
+            object_name: Имя объекта
+        Returns:
+            Байты файла или None
+        """
+        return self.download_file(bucket, object_name)
     
     def get_file_url(self, bucket: str, object_name: str, expires: int = 3600) -> Optional[str]:
         """

@@ -10,6 +10,7 @@ interface Supplier {
   name: string
   inn: string
   email: string | null
+  contact_email: string | null
   rating: number | null
   is_blacklisted: boolean
   tags_array: string[]
@@ -28,7 +29,7 @@ interface SearchSuggestion {
   score?: number
 }
 
-// Простой стемминг для русского языка (убираем окончания)
+// Простой стемминг для русского языка
 const stem = (word: string): string => {
   const lower = word.toLowerCase()
   const endings = ['ая', 'яя', 'ой', 'ый', 'ий', 'ые', 'ие', 'ого', 'его', 'ому', 'ему', 'ым', 'им', 'ых', 'их', 'ую', 'юю', 'ою', 'ею', 'ав', 'ев', 'ов', 'ев', 'ая', 'яя']
@@ -164,12 +165,15 @@ export default function HomePage() {
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [tagSuggestions, setTagSuggestions] = useState<SearchSuggestion[]>([])
   const [categorySuggestions, setCategorySuggestions] = useState<SearchSuggestion[]>([])
+  const [productSuggestions, setProductSuggestions] = useState<SearchSuggestion[]>([])
   const searchTimeoutRef = useRef<NodeJS.Timeout>()
   const searchRef = useRef<HTMLDivElement>(null)
   const [userRole, setUserRole] = useState<string>('')
   const [selectedProduct, setSelectedProduct] = useState<SearchSuggestion | null>(null)
   
   const [showAllResultsModal, setShowAllResultsModal] = useState(false)
+  const [showSupplierProductsModal, setShowSupplierProductsModal] = useState(false)
+  const [selectedSupplierData, setSelectedSupplierData] = useState<any>(null)
   const [showEmailModal, setShowEmailModal] = useState(false)
   const [selectedSuppliers, setSelectedSuppliers] = useState<string[]>([])
   const [emailSubject, setEmailSubject] = useState('')
@@ -247,73 +251,79 @@ export default function HomePage() {
         const tagSuggestions: SearchSuggestion[] = tags.slice(0, 5).map((t: any) => ({
           type: 'tag',
           name: t.tag,
-          count: t.count
+          count: t.count,
+          relevance: t.relevance
         }))
         setTagSuggestions(tagSuggestions)
-        
-        // Товары
+
+        // Парсим товары (приоритет 3) - УЖЕ ПРИОРИТИЗИРОВАННЫЕ С БЭКА
         const allProducts = data.all_products || []
-        const productSuggestions: SearchSuggestion[] = []
-        const seenProducts = new Set<string>()        
-        // Категории - переводим ключи в названия
-        const catSuggestions: SearchSuggestion[] = []
-        const categoryMap: Record<string, string> = {}
+        const productSuggestions: SearchSuggestion[] = allProducts.map((p: any) => ({
+          type: 'product',
+          name: p.name,
+          sku: p.sku,
+          supplier_id: p.supplier_id,
+          supplier_name: data.results.find((r: any) => r.supplier_id === p.supplier_id)?.supplier_name || '',
+          score: p.score,
+          match_category: p.match_category
+        }))
+        setProductSuggestions(productSuggestions)
+
+        // Категории
+        const seenProducts = new Set<string>()
+        const categories = new Map<string, number>()
         
-        // Загружаем маппинг категорий
+        data.results.forEach((result: any) => {
+          if (result.supplier_categories) {
+            result.supplier_categories.forEach((cat: string) => {
+              categories.set(cat, (categories.get(cat) || 0) + 1)
+            })
+          }
+        })
+        
+
+        
+        // Загружаем маппинг категорий из API
         try {
           const catResponse = await fetch(`${API_URL}/api/suppliers/categories`, {
             headers: { 'Authorization': `Bearer ${token}` }
           })
           if (catResponse.ok) {
             const catData = await catResponse.json()
+            const categoryMap: Record<string, string> = {}
             Object.entries(catData.categories || {}).forEach(([key, value]: [string, any]) => {
               categoryMap[key] = value.name
             })
+            
+            const catSuggestions: SearchSuggestion[] = []
+            categories.forEach((count, catKey) => {
+              const catName = categoryMap[catKey] || catKey
+              catSuggestions.push({
+                type: 'category',
+                name: catName,
+                count: count
+              })
+            })
+            setCategorySuggestions(catSuggestions.slice(0, 5))
           }
         } catch (e) {
           console.error('Failed to load category names:', e)
         }
         
-        const categoryCount = new Map<string, number>()
-        data.results.forEach((result: any) => {
-          if (result.supplier_categories) {
-            result.supplier_categories.forEach((catKey: string) => {
-              const catName = categoryMap[catKey] || catKey
-              categoryCount.set(catName, (categoryCount.get(catName) || 0) + 1)
-            })
-          }
-        })
-        
-        categoryCount.forEach((count, name) => {
-          catSuggestions.push({
-            type: 'category',
-            name: name,
-            count: count
-          })
-        })
-        
-        setCategorySuggestions(catSuggestions.slice(0, 5))
-        
-        allProducts.forEach((product: any) => {
-          const key = `${product.sku || ''}_${product.name}`
-          if (!seenProducts.has(key)) {
-            seenProducts.add(key)
-            
-            const supplier = data.results.find((r: any) => r.supplier_id === product.supplier_id)
-            
-            productSuggestions.push({
-              type: 'product',
-              name: product.name,
-              sku: product.sku,
-              supplier_id: product.supplier_id,
-              supplier_name: supplier?.supplier_name || '',
-              score: product.score || 0
-            })
-          }
-        })
-        
-        setSuggestions(productSuggestions)
         setShowSuggestions(true)
+
+        // Обновляем displayedSuppliers с данными поиска
+        const supplierIds = new Set(data.results.map((r: any) => r.supplier_id))
+        const resultsMap = new Map(data.results.map((r: any) => [r.supplier_id, r]))
+        
+        const filtered = suppliers
+          .filter(s => supplierIds.has(s.id))
+          .map(s => ({
+            ...s,
+            _searchData: resultsMap.get(s.id)
+          }))
+        
+        setDisplayedSuppliers(filtered as any)
       }
     } catch (error) {
       console.error('Search error:', error)
@@ -347,7 +357,6 @@ export default function HomePage() {
     setSelectedProduct(suggestion)
     
     if (suggestion.type === 'tag') {
-      // Для тега - показываем всех поставщиков с товарами содержащими этот тег
       setSearchQuery(suggestion.name)
     } else if (suggestion.type === 'product') {
       setSearchQuery(suggestion.sku ? `${suggestion.sku} - ${suggestion.name}` : suggestion.name)
@@ -369,8 +378,16 @@ export default function HomePage() {
       if (response.ok) {
         const data = await response.json()
         const supplierIds = new Set(data.results.map((r: any) => r.supplier_id))
-        const filtered = suppliers.filter(s => supplierIds.has(s.id))
-        setDisplayedSuppliers(filtered)
+        const resultsMap = new Map(data.results.map((r: any) => [r.supplier_id, r]))
+        
+        const filtered = suppliers
+          .filter(s => supplierIds.has(s.id))
+          .map(s => ({
+            ...s,
+            _searchData: resultsMap.get(s.id)
+          }))
+        
+        setDisplayedSuppliers(filtered as any)
       }
     } catch (error) {
       console.error('Error:', error)
@@ -379,7 +396,7 @@ export default function HomePage() {
 
   const openEmailModal = () => {
     const availableSuppliers = displayedSuppliers.filter(
-      s => s.email && s.status === 'ACTIVE' && !s.is_blacklisted
+      s => s.contact_email && s.status === 'ACTIVE' && !s.is_blacklisted
     )
     setSelectedSuppliers(availableSuppliers.map(s => s.id))
     setEmailSubject('')
@@ -435,11 +452,11 @@ export default function HomePage() {
       for (let i = 0; i < selectedSuppliers.length; i++) {
         const supplierId = selectedSuppliers[i]
         const supplier = suppliers.find(s => s.id === supplierId)
-        
-        if (!supplier?.email) continue
+
+        if (!supplier?.contact_email) continue
 
         const formData = new FormData()
-        formData.append('to', supplier.email)
+        formData.append('to', supplier.contact_email)
         formData.append('subject', emailSubject)
         formData.append('body', emailBody)
 
@@ -483,10 +500,21 @@ export default function HomePage() {
   }
 
   const availableEmailSuppliers = displayedSuppliers.filter(
-    s => s.email && s.status === 'ACTIVE' && !s.is_blacklisted
+    s => s.contact_email && s.status === 'ACTIVE' && !s.is_blacklisted
   )
 
-  const totalSuggestions = tagSuggestions.length + suggestions.length + categorySuggestions.length
+  const handleSupplierClick = (supplier: any) => {
+    // Если есть результаты поиска - открываем модалку с товарами
+    if (supplier._searchData && supplier._searchData.matched_products > 0) {
+      setSelectedSupplierData(supplier)
+      setShowSupplierProductsModal(true)
+    } else {
+      // Если нет результатов поиска - переходим на карточку поставщика
+      router.push(`/suppliers/${supplier.id}`)
+    }
+  }
+
+  const totalSuggestions = tagSuggestions.length + productSuggestions.length + categorySuggestions.length
 
   return (
     <LayoutWithSidebar>
@@ -559,12 +587,12 @@ export default function HomePage() {
                     )}
 
                     {/* ТОВАРЫ - ПРИОРИТЕТ 3 */}
-                    {suggestions.length > 0 && (
+                    {productSuggestions.length > 0 && (
                       <>
                         <div className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase mt-2">
-                          Конкретные товары ({suggestions.length})
+                          Конкретные товары ({productSuggestions.length})
                         </div>
-                        {suggestions.slice(0, 5).map((suggestion, idx) => (
+                        {productSuggestions.slice(0, 5).map((suggestion, idx) => (
                           <button
                             key={idx}
                             onClick={() => handleSelectSuggestion(suggestion)}
@@ -654,10 +682,10 @@ export default function HomePage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {displayedSuppliers.map(supplier => (
+              {displayedSuppliers.map((supplier: any) => (
                 <div
                   key={supplier.id}
-                  onClick={() => router.push(`/suppliers/${supplier.id}`)}
+                  onClick={() => handleSupplierClick(supplier)}
                   className="bg-white rounded-lg border-2 border-gray-200 hover:border-blue-400 hover:shadow-lg transition cursor-pointer p-4"
                 >
                   <div className="flex items-start justify-between mb-2">
@@ -673,13 +701,38 @@ export default function HomePage() {
                     </div>
                   </div>
 
+                  {/* ОТОБРАЖЕНИЕ НАЙДЕННЫХ ТОВАРОВ */}
+                  {supplier._searchData && supplier._searchData.matched_products > 0 && (
+                    <div className="mb-2 p-2 bg-blue-50 rounded text-xs">
+                      <div className="font-semibold text-blue-700 mb-1">
+                        Найдено товаров: {supplier._searchData.matched_products}
+                      </div>
+                      {supplier._searchData.example_products && supplier._searchData.example_products.length > 0 && (
+                        <div className="space-y-1">
+                          {supplier._searchData.example_products.slice(0, 2).map((product: any, idx: number) => (
+                            <div key={idx} className="text-gray-600 truncate">
+                              {product.sku && <span className="font-mono text-gray-500">{product.sku} </span>}
+                              {product.name && <span>{product.name.substring(0, 50)}...</span>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ОТОБРАЖЕНИЕ ТЕГОВ С КОЛИЧЕСТВОМ */}
                   {supplier.tags_array && supplier.tags_array.length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-2">
-                      {supplier.tags_array.slice(0, 3).map((tag, idx) => (
+                      {supplier.tags_array.slice(0, 3).map((tag: string, idx: number) => (
                         <span key={idx} className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded">
                           {tag}
                         </span>
                       ))}
+                      {supplier.tags_array.length > 3 && (
+                        <span className="px-2 py-0.5 bg-gray-200 text-gray-700 text-xs rounded font-semibold">
+                          +{supplier.tags_array.length - 3}
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>
@@ -688,6 +741,7 @@ export default function HomePage() {
           )}
         </div>
 
+        {/* Модалка всех результатов поиска */}
         {showAllResultsModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg max-w-3xl w-full max-h-[80vh] overflow-hidden flex flex-col">
@@ -699,7 +753,6 @@ export default function HomePage() {
               </div>
 
               <div className="flex-1 overflow-y-auto p-4">
-                {/* ТЕГИ */}
                 {tagSuggestions.length > 0 && (
                   <>
                     <h3 className="font-semibold mb-3 text-green-700">🏷️ Теги ({tagSuggestions.length})</h3>
@@ -720,7 +773,6 @@ export default function HomePage() {
                   </>
                 )}
 
-                {/* КАТЕГОРИИ */}
                 {categorySuggestions.length > 0 && (
                   <>
                     <h3 className="font-semibold mb-3">Категории</h3>
@@ -741,12 +793,11 @@ export default function HomePage() {
                   </>
                 )}
 
-                {/* ТОВАРЫ */}
-                {suggestions.length > 0 && (
+                {productSuggestions.length > 0 && (
                   <>
-                    <h3 className="font-semibold mb-3">Товары ({suggestions.length})</h3>
+                    <h3 className="font-semibold mb-3">Товары ({productSuggestions.length})</h3>
                     <div className="space-y-2">
-                      {suggestions.map((suggestion, idx) => (
+                      {productSuggestions.map((suggestion, idx) => (
                         <button
                           key={idx}
                           onClick={() => handleSelectSuggestion(suggestion)}
@@ -773,6 +824,62 @@ export default function HomePage() {
           </div>
         )}
 
+        {/* Модалка товаров поставщика */}
+        {showSupplierProductsModal && selectedSupplierData && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+              <div className="p-4 border-b flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-bold">{selectedSupplierData.name}</h2>
+                  <p className="text-sm text-gray-600">Найдено товаров: {selectedSupplierData._searchData.matched_products}</p>
+                </div>
+                <button onClick={() => setShowSupplierProductsModal(false)}>
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              
+              <div className="flex-1 overflow-y-auto p-4">
+                {selectedSupplierData._searchData.all_products && selectedSupplierData._searchData.all_products.length > 0 ? (
+                  <div className="space-y-2">
+                    {selectedSupplierData._searchData.all_products.map((product: any, idx: number) => (
+                      <div key={idx} className="p-3 border rounded-lg hover:bg-gray-50">
+                        <div className="font-medium">{product.name}</div>
+                        {product.sku && (
+                          <div className="text-sm text-gray-500 font-mono mt-1">Артикул: {product.sku}</div>
+                        )}
+                        {product.price && (
+                          <div className="text-sm text-green-600 mt-1">Цена: {product.price} ₽</div>
+                        )}
+                        {product.score && (
+                          <div className="text-xs text-gray-400 mt-1">Релевантность: {product.score.toFixed(1)}</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-12 text-gray-500">Товары не найдены</div>
+                )}
+              </div>
+              
+              <div className="p-4 border-t flex justify-end space-x-3">
+                <button
+                  onClick={() => setShowSupplierProductsModal(false)}
+                  className="px-4 py-2 border rounded-lg hover:bg-gray-50"
+                >
+                  Закрыть
+                </button>
+                <button
+                  onClick={() => router.push(`/suppliers/${selectedSupplierData.id}`)}
+                  className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+                >
+                  Перейти к поставщику
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Модалка отправки email */}
         {showEmailModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
@@ -873,7 +980,7 @@ export default function HomePage() {
                         />
                         <div className="flex-1 min-w-0">
                           <div className="font-medium text-sm truncate">{supplier.name}</div>
-                          <div className="text-xs text-gray-500 truncate">{supplier.email}</div>
+                          <div className="text-xs text-gray-500 truncate">{supplier.contact_email}</div>
                         </div>
                         <div className="flex items-center space-x-1 flex-shrink-0">
                           <span className="text-yellow-500 text-sm">★</span>

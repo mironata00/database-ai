@@ -35,8 +35,11 @@ class MarkReadRequest(BaseModel):
 async def find_supplier_by_email(db: AsyncSession, email: str) -> Optional[Supplier]:
     """Найти поставщика по email адресу"""
     email_clean = email.lower().strip()
+    
+    # Извлекаем email из формата "Name <email@domain.com>"
     if '<' in email_clean and '>' in email_clean:
         email_clean = email_clean.split('<')[1].split('>')[0].strip()
+    
     result = await db.execute(
         select(Supplier).where(
             or_(
@@ -45,7 +48,7 @@ async def find_supplier_by_email(db: AsyncSession, email: str) -> Optional[Suppl
             )
         )
     )
-    return result.scalars().first()
+    return result.scalar_one_or_none()
 
 
 async def save_email_to_thread(
@@ -78,9 +81,11 @@ async def save_email_to_thread(
         attachments=attachments,
         in_reply_to=in_reply_to
     )
+    
     db.add(email_thread)
     await db.commit()
     await db.refresh(email_thread)
+    
     return email_thread
 
 
@@ -94,8 +99,10 @@ async def get_mail_config(
         select(User).where(User.id == current_user.get("id"))
     )
     user = result.scalar_one_or_none()
+
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
+
     return {
         "has_smtp_configured": user.has_smtp_configured(),
         "has_imap_configured": user.has_imap_configured(),
@@ -115,8 +122,10 @@ async def get_folders(
         select(User).where(User.id == current_user.get("id"))
     )
     user = result.scalar_one_or_none()
+
     if not user or not user.has_imap_configured():
         raise HTTPException(status_code=400, detail="IMAP не настроен")
+
     try:
         client = IMAPClientPersonal(
             host=user.imap_host,
@@ -145,8 +154,10 @@ async def get_messages(
         select(User).where(User.id == current_user.get("id"))
     )
     user = result.scalar_one_or_none()
+
     if not user or not user.has_imap_configured():
         raise HTTPException(status_code=400, detail="IMAP не настроен")
+
     try:
         client = IMAPClientPersonal(
             host=user.imap_host,
@@ -178,8 +189,10 @@ async def get_message(
         select(User).where(User.id == current_user.get("id"))
     )
     user = result.scalar_one_or_none()
+
     if not user or not user.has_imap_configured():
         raise HTTPException(status_code=400, detail="IMAP не настроен")
+
     try:
         client = IMAPClientPersonal(
             host=user.imap_host,
@@ -189,48 +202,19 @@ async def get_message(
             use_ssl=user.imap_use_ssl
         )
         message = client.get_message_body(folder=folder, msg_id=msg_id)
+
         if "error" in message:
             raise HTTPException(status_code=404, detail=message["error"])
 
-        inline_image_urls = {}
-        if message.get('inline_images'):
-            from urllib.parse import quote
-            for img in message['inline_images']:
-                file_id = str(uuid.uuid4())
-                timestamp = datetime.now().strftime('%Y%m%d')
-                # Санитизируем имя файла - убираем опасные символы
-                safe_filename = img['filename'].replace('?', '_').replace('=', '_').replace('<', '_').replace('>', '_')
-                object_name = f"inline/{timestamp}/{user.id}/{msg_id}/{file_id}_{safe_filename}"
-                success = minio_client.upload_file(
-                    bucket='email-attachments',
-                    object_name=object_name,
-                    data=img['content'],
-                    content_type=img['content_type']
-                )
-                if success:
-                    # URL-encode путь для безопасности
-                    encoded_path = quote(object_name, safe='/')
-                    minio_url = f"/api/mail/inline-image/{encoded_path}"
-                    inline_image_urls[img['cid']] = minio_url
-        
-        if message.get('body_html') and inline_image_urls:
-            html = message['body_html']
-            for cid, url in inline_image_urls.items():
-                html = html.replace(f'cid:{cid}', url)
-                html = html.replace(f'cid:&lt;{cid}&gt;', url)
-                html = html.replace(f'cid:<{cid}>', url)
-            message['body_html'] = html
-        
-        # Удаляем бинарные данные inline изображений из ответа
-        if 'inline_images' in message:
-            del message['inline_images']
-
+        # Сохраняем вложения в MinIO и заменяем на ссылки
         if message.get('attachments'):
             for idx, attachment in enumerate(message['attachments']):
                 file_id = str(uuid.uuid4())
                 timestamp = datetime.now().strftime('%Y%m%d')
                 object_name = f"{timestamp}/{user.id}/{msg_id}/{file_id}_{attachment['filename']}"
+
                 attachment_data = client.get_attachment(folder=folder, msg_id=msg_id, attachment_index=idx)
+
                 if attachment_data and attachment_data.get('content'):
                     success = minio_client.upload_file(
                         bucket='email-attachments',
@@ -238,13 +222,16 @@ async def get_message(
                         data=attachment_data['content'],
                         content_type=attachment.get('content_type', 'application/octet-stream')
                     )
+
                     if success:
                         attachment['minio_path'] = object_name
                         attachment['download_index'] = idx
 
+        # Сохраняем входящее письмо в историю (если отправитель - поставщик)
         try:
             from_email = message.get('from', '')
             supplier = await find_supplier_by_email(db, from_email)
+            
             if supplier:
                 attachments_data = []
                 if message.get('attachments'):
@@ -255,6 +242,7 @@ async def get_message(
                             'size': att.get('size'),
                             'minio_path': att.get('minio_path')
                         })
+                
                 await save_email_to_thread(
                     db=db,
                     supplier_id=supplier.id,
@@ -270,7 +258,9 @@ async def get_message(
                     in_reply_to=message.get('in_reply_to')
                 )
         except Exception as e:
+            # Не блокируем получение письма если не удалось сохранить в историю
             print(f"Error saving incoming email to thread: {e}")
+
         return message
     except HTTPException:
         raise
@@ -291,8 +281,10 @@ async def download_attachment(
         select(User).where(User.id == current_user.get("id"))
     )
     user = result.scalar_one_or_none()
+
     if not user or not user.has_imap_configured():
         raise HTTPException(status_code=400, detail="IMAP не настроен")
+
     try:
         client = IMAPClientPersonal(
             host=user.imap_host,
@@ -301,13 +293,16 @@ async def download_attachment(
             password=user.imap_password,
             use_ssl=user.imap_use_ssl
         )
+
         attachment_data = client.get_attachment(
             folder=folder,
             msg_id=msg_id,
             attachment_index=attachment_index
         )
+
         if not attachment_data:
             raise HTTPException(status_code=404, detail="Вложение не найдено")
+
         return StreamingResponse(
             io.BytesIO(attachment_data['content']),
             media_type=attachment_data['content_type'],
@@ -319,36 +314,6 @@ async def download_attachment(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка скачивания вложения: {str(e)}")
-
-
-@router.get("/inline-image/{path:path}")
-async def get_inline_image(path: str):
-    """Получить inline изображение из MinIO (публичный доступ)"""
-    try:
-        # Декодируем имя файла если нужно
-        import urllib.parse
-        path = urllib.parse.unquote(path)
-        
-        file_data = minio_client.get_file(bucket='email-attachments', object_name=path)
-        if not file_data:
-            raise HTTPException(status_code=404, detail="Изображение не найдено")
-        
-        content_type = 'image/jpeg'
-        if path.lower().endswith('.png'):
-            content_type = 'image/png'
-        elif path.lower().endswith('.gif'):
-            content_type = 'image/gif'
-        elif path.lower().endswith('.webp'):
-            content_type = 'image/webp'
-        
-        return StreamingResponse(
-            io.BytesIO(file_data),
-            media_type=content_type
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ошибка получения изображения: {str(e)}")
 
 
 @router.post("/messages/{msg_id}/read")
@@ -363,8 +328,10 @@ async def mark_as_read(
         select(User).where(User.id == current_user.get("id"))
     )
     user = result.scalar_one_or_none()
+
     if not user or not user.has_imap_configured():
         raise HTTPException(status_code=400, detail="IMAP не настроен")
+
     try:
         client = IMAPClientPersonal(
             host=user.imap_host,
@@ -394,8 +361,10 @@ async def send_email(
         select(User).where(User.id == current_user.get("id"))
     )
     user = result.scalar_one_or_none()
+
     if not user or not user.has_smtp_configured():
         raise HTTPException(status_code=400, detail="SMTP не настроен")
+
     try:
         smtp_config = {
             'host': user.smtp_host,
@@ -406,6 +375,7 @@ async def send_email(
             'from_name': user.smtp_from_name or user.full_name or user.smtp_user,
             'from_email': user.smtp_user
         }
+
         imap_config = None
         if user.has_imap_configured():
             imap_config = {
@@ -415,30 +385,38 @@ async def send_email(
                 'password': user.imap_password,
                 'use_ssl': user.imap_use_ssl
             }
+
+        # Подготовка вложений и сохранение в MinIO
         attachments = []
         minio_paths = []
+
         for file in files:
             content = await file.read()
+
             file_id = str(uuid.uuid4())
             timestamp = datetime.now().strftime('%Y%m%d')
             object_name = f"sent/{timestamp}/{user.id}/{file_id}_{file.filename}"
+
             minio_client.upload_file(
                 bucket='email-attachments',
                 object_name=object_name,
                 data=content,
                 content_type=file.content_type or 'application/octet-stream'
             )
+
             minio_paths.append({
                 'filename': file.filename,
                 'minio_path': object_name,
                 'size': len(content),
                 'content_type': file.content_type or 'application/octet-stream'
             })
+
             attachments.append({
                 'filename': file.filename,
                 'content': content,
                 'content_type': file.content_type or 'application/octet-stream'
             })
+
         result = send_email_from_user_with_attachments(
             user_smtp_config=smtp_config,
             to_email=to,
@@ -449,11 +427,16 @@ async def send_email(
             save_to_sent=True,
             imap_config=imap_config
         )
+
         result['minio_attachments'] = minio_paths
+
+        # Сохраняем исходящее письмо в историю (если получатель - поставщик)
         try:
             supplier = await find_supplier_by_email(db, to)
+            
             if supplier:
                 message_id = result.get('message_id', f"{uuid.uuid4()}@{smtp_config['host']}")
+                
                 await save_email_to_thread(
                     db=db,
                     supplier_id=supplier.id,
@@ -467,10 +450,15 @@ async def send_email(
                     attachments=minio_paths if minio_paths else None,
                     in_reply_to=reply_to
                 )
+                
+                # Обновляем last_email_sent_at у поставщика
                 supplier.last_email_sent_at = datetime.utcnow()
                 await db.commit()
+                
         except Exception as e:
+            # Не блокируем отправку письма если не удалось сохранить в историю
             print(f"Error saving outgoing email to thread: {e}")
+
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка отправки: {str(e)}")

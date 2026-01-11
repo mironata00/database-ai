@@ -45,7 +45,7 @@ async def find_supplier_by_email(db: AsyncSession, email: str) -> Optional[Suppl
             )
         )
     )
-    return result.scalars().first()
+    return result.scalar_one_or_none()
 
 
 async def save_email_to_thread(
@@ -194,13 +194,10 @@ async def get_message(
 
         inline_image_urls = {}
         if message.get('inline_images'):
-            from urllib.parse import quote
             for img in message['inline_images']:
                 file_id = str(uuid.uuid4())
                 timestamp = datetime.now().strftime('%Y%m%d')
-                # Санитизируем имя файла - убираем опасные символы
-                safe_filename = img['filename'].replace('?', '_').replace('=', '_').replace('<', '_').replace('>', '_')
-                object_name = f"inline/{timestamp}/{user.id}/{msg_id}/{file_id}_{safe_filename}"
+                object_name = f"inline/{timestamp}/{user.id}/{msg_id}/{file_id}_{img['filename']}"
                 success = minio_client.upload_file(
                     bucket='email-attachments',
                     object_name=object_name,
@@ -208,9 +205,7 @@ async def get_message(
                     content_type=img['content_type']
                 )
                 if success:
-                    # URL-encode путь для безопасности
-                    encoded_path = quote(object_name, safe='/')
-                    minio_url = f"/api/mail/inline-image/{encoded_path}"
+                    minio_url = f"/api/mail/inline-image/{object_name}"
                     inline_image_urls[img['cid']] = minio_url
         
         if message.get('body_html') and inline_image_urls:
@@ -220,10 +215,6 @@ async def get_message(
                 html = html.replace(f'cid:&lt;{cid}&gt;', url)
                 html = html.replace(f'cid:<{cid}>', url)
             message['body_html'] = html
-        
-        # Удаляем бинарные данные inline изображений из ответа
-        if 'inline_images' in message:
-            del message['inline_images']
 
         if message.get('attachments'):
             for idx, attachment in enumerate(message['attachments']):
@@ -322,17 +313,16 @@ async def download_attachment(
 
 
 @router.get("/inline-image/{path:path}")
-async def get_inline_image(path: str):
-    """Получить inline изображение из MinIO (публичный доступ)"""
+async def get_inline_image(
+    path: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """Получить inline изображение из MinIO"""
     try:
-        # Декодируем имя файла если нужно
-        import urllib.parse
-        path = urllib.parse.unquote(path)
-        
         file_data = minio_client.get_file(bucket='email-attachments', object_name=path)
         if not file_data:
             raise HTTPException(status_code=404, detail="Изображение не найдено")
-        
         content_type = 'image/jpeg'
         if path.lower().endswith('.png'):
             content_type = 'image/png'
@@ -340,13 +330,10 @@ async def get_inline_image(path: str):
             content_type = 'image/gif'
         elif path.lower().endswith('.webp'):
             content_type = 'image/webp'
-        
         return StreamingResponse(
             io.BytesIO(file_data),
             media_type=content_type
         )
-    except HTTPException:
-        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка получения изображения: {str(e)}")
 

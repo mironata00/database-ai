@@ -10,6 +10,7 @@ interface Supplier {
   name: string
   inn: string
   email: string | null
+  contact_email: string | null
   phone: string | null
   contact_person: string | null
   color: string
@@ -98,11 +99,11 @@ export default function SuppliersPage() {
     }
   }
 
-  const filteredSuppliers = suppliers.filter(s => {
+	const filteredSuppliers = suppliers.filter(s => {
     const q = searchQuery.toLowerCase()
     return s.name.toLowerCase().includes(q) || 
            s.inn.includes(q) || 
-           (s.email?.toLowerCase() || '').includes(q)
+           (s.contact_email?.toLowerCase() || '').includes(q)
   })
 
   return (
@@ -184,7 +185,7 @@ export default function SuppliersPage() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{supplier.inn}</td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">{supplier.email || '-'}</div>
+                        <div className="text-sm text-gray-900">{supplier.contact_email || '-'}</div>
                         <div className="text-xs text-gray-500">{supplier.phone || '-'}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">

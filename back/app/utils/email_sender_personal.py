@@ -57,7 +57,9 @@ def send_email_from_user(
         msg['Message-ID'] = f"<{int(time.time())}.{user_smtp_config['from_email']}>"
         
         if reply_to:
-            msg['Reply-To'] = reply_to
+            # reply_to содержит Message-ID письма, на которое отвечаем
+            msg['In-Reply-To'] = reply_to
+            msg['References'] = reply_to
         
         msg.attach(MIMEText(body, 'plain', 'utf-8'))
         
@@ -261,7 +263,7 @@ def send_email_from_user_with_attachments(
         msg['Message-ID'] = f"<{int(time.time())}.{user_smtp_config['from_email']}>"
 
         if reply_to:
-            msg['Reply-To'] = reply_to
+            # reply_to содержит Message-ID письма, на которое отвечаем
             msg['In-Reply-To'] = reply_to
             msg['References'] = reply_to
 
@@ -302,10 +304,13 @@ def send_email_from_user_with_attachments(
             except Exception as e:
                 logger.warning(f"Failed to save to Sent folder: {e}")
 
+        message_id = msg['Message-ID']
+        
         return {
             "success": True,
             "from_email": user_smtp_config['from_email'],
             "to_email": to_email,
+            "message_id": message_id,
             "attachments_count": len(attachments) if attachments else 0
         }
 

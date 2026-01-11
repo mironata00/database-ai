@@ -507,6 +507,8 @@ export default function SupplierDetailPage() {
               <div className="space-y-1">
                 <EditableField label="Юридический адрес" value={supplier.legal_address} field="legal_address" placeholder="Введите адрес" />
                 <EditableField label="Фактический адрес" value={supplier.actual_address} field="actual_address" placeholder="Введите адрес" />
+                <EditableField label="Почтовый адрес" value={supplier.postal_address} field="postal_address" placeholder="Введите адрес" />
+                <EditableField label="ЭДО" value={supplier.edo} field="edo" placeholder="Диадок, СБИС, Контур и т.д." />
               </div>
             </div>
 

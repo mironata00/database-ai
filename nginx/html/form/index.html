@@ -660,12 +660,16 @@
                         Адреса
                     </h2>
                     <div class="form-group">
-                        <label>Юридический адрес</label>
-                        <input type="text" name="legal_address" placeholder="123456, г. Москва, ул. Ленина, д. 1, офис 100">
-                    </div>
-                    <div class="form-group">
                         <label>Фактический адрес</label>
                         <input type="text" name="actual_address" placeholder="123456, г. Москва, ул. Пушкина, д. 10, склад 5">
+                    </div>
+                    <div class="form-group">
+                        <label>Почтовый адрес</label>
+                        <input type="text" name="postal_address" placeholder="123456, г. Москва, а/я 123">
+                    </div>
+                    <div class="form-group">
+                        <label>ЭДО (электронный документооборот)</label>
+                        <input type="text" name="edo" placeholder="Диадок, Контур, СБИС и др.">
                     </div>
                     <div class="form-group">
                         <label>Регионы доставки</label>
@@ -1031,20 +1035,22 @@
                     categories: selectedCategories,
                 };
 
-                if (e.target.kpp.value) supplierData.kpp = e.target.kpp.value;
-                if (e.target.ogrn.value) supplierData.ogrn = e.target.ogrn.value;
-                if (e.target.email.value) supplierData.email = e.target.email.value;
-                if (e.target.phone.value) supplierData.phone = e.target.phone.value;
-                if (e.target.website.value) supplierData.website = e.target.website.value;
-                if (e.target.legal_address.value) supplierData.legal_address = e.target.legal_address.value;
-                if (e.target.actual_address.value) supplierData.actual_address = e.target.actual_address.value;
-                if (e.target.contact_person.value) supplierData.contact_person = e.target.contact_person.value;
-                if (e.target.contact_position.value) supplierData.contact_position = e.target.contact_position.value;
-                if (e.target.contact_phone.value) supplierData.contact_phone = e.target.contact_phone.value;
-                if (e.target.contact_email.value) supplierData.contact_email = e.target.contact_email.value;
-                if (e.target.payment_terms.value) supplierData.payment_terms = e.target.payment_terms.value;
-                if (e.target.min_order_sum.value) supplierData.min_order_sum = parseFloat(e.target.min_order_sum.value);
-                if (e.target.delivery_regions.value) {
+                if (e.target.kpp && e.target.kpp.value) supplierData.kpp = e.target.kpp.value;
+                if (e.target.ogrn && e.target.ogrn.value) supplierData.ogrn = e.target.ogrn.value;
+                if (e.target.email && e.target.email.value) supplierData.email = e.target.email.value;
+                if (e.target.phone && e.target.phone.value) supplierData.phone = e.target.phone.value;
+                if (e.target.website && e.target.website.value) supplierData.website = e.target.website.value;
+                if (e.target.legal_address && e.target.legal_address.value) supplierData.legal_address = e.target.legal_address.value;
+                if (e.target.actual_address && e.target.actual_address.value) supplierData.actual_address = e.target.actual_address.value;
+                if (e.target.postal_address && e.target.postal_address.value) supplierData.postal_address = e.target.postal_address.value;
+                if (e.target.edo && e.target.edo.value) supplierData.edo = e.target.edo.value;
+                if (e.target.contact_person && e.target.contact_person.value) supplierData.contact_person = e.target.contact_person.value;
+                if (e.target.contact_position && e.target.contact_position.value) supplierData.contact_position = e.target.contact_position.value;
+                if (e.target.contact_phone && e.target.contact_phone.value) supplierData.contact_phone = e.target.contact_phone.value;
+                if (e.target.contact_email && e.target.contact_email.value) supplierData.contact_email = e.target.contact_email.value;
+                if (e.target.payment_terms && e.target.payment_terms.value) supplierData.payment_terms = e.target.payment_terms.value;
+                if (e.target.min_order_sum && e.target.min_order_sum.value) supplierData.min_order_sum = parseFloat(e.target.min_order_sum.value);
+                if (e.target.delivery_regions && e.target.delivery_regions.value) {
                     supplierData.delivery_regions = e.target.delivery_regions.value.split(',').map(r => r.trim());
                 }
 
